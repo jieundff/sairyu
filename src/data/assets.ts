@@ -13,6 +13,12 @@
  *  Paths point at the `public/` folder, so `/images/01.webp` resolves to
  *  `public/images/01.webp` at build/serve time. Replace the files in place
  *  and the site updates automatically — no component changes required.
+ *
+ *  PREVIEW STATE: every gallery slot below currently resolves to the same
+ *  uploaded preview image (all ten `public/images/NN.webp` files hold it).
+ *  The ten slots are intentionally kept as separate paths so each can be
+ *  swapped for its own final asset later — just drop a new file at the
+ *  matching `public/images/NN.webp`, no code change needed.
  */
 
 export const VIDEOS = {
