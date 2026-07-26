@@ -10,15 +10,15 @@
  *  3. To swap the whole site's media, edit ONLY this file — or drop new files
  *     into `public/images` and `public/videos` using the same names.
  *
- *  Paths point at the `public/` folder, so `/images/01.webp` resolves to
- *  `public/images/01.webp` at build/serve time. Replace the files in place
+ *  Paths point at the `public/` folder, so `/images/최종2.jpg` resolves to
+ *  `public/images/최종2.jpg` at build/serve time. Replace the files in place
  *  and the site updates automatically — no component changes required.
  *
- *  PREVIEW STATE: every gallery slot below currently resolves to the same
- *  uploaded preview image (all ten `public/images/NN.webp` files hold it).
- *  The ten slots are intentionally kept as separate paths so each can be
- *  swapped for its own final asset later — just drop a new file at the
- *  matching `public/images/NN.webp`, no code change needed.
+ *  PREVIEW STATE: every gallery slot below points to the same final preview
+ *  image (`public/images/최종2.jpg`). The ten slots are kept as separate
+ *  entries so each can be repointed to its own final asset later — just edit
+ *  the matching line below (or drop a file in `public/images`), no component
+ *  change needed.
  */
 
 export const VIDEOS = {
@@ -27,16 +27,16 @@ export const VIDEOS = {
 } as const;
 
 export const GALLERY_IMAGES = [
-  "/images/01.webp",
-  "/images/02.webp",
-  "/images/03.webp",
-  "/images/04.webp",
-  "/images/05.webp",
-  "/images/06.webp",
-  "/images/07.webp",
-  "/images/08.webp",
-  "/images/09.webp",
-  "/images/10.webp",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
+  "/images/최종2.jpg",
 ] as const;
 
 /** Convenience type for a single gallery image source. */
