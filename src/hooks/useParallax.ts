@@ -1,44 +1,50 @@
-import { useEffect, useRef, useState } from "react";
-import { VIDEO_PARALLAX_FACTOR } from "@/utils/constants";
+import { useRef } from "react";
+import { gsap } from "@/lib/gsap";
+import { PARALLAX } from "@/utils/constants";
+import { prefersReducedMotion } from "@/utils/env";
+import { useIsoLayoutEffect } from "./useIsoLayoutEffect";
+
+interface ParallaxOptions {
+  /** Total travel as a percentage of the element's height. */
+  amount?: number;
+  /** Direction: -1 moves up as you scroll down, 1 moves down. */
+  direction?: 1 | -1;
+}
 
 /**
- * Scroll-driven parallax logic, isolated from components.
- *
- * Returns the vertical offset (px) to translate an element by, derived from
- * the page scroll position and a strength factor. Respects the user's
- * "reduce motion" preference by returning a constant 0.
+ * Scroll-scrubbed parallax on a single element. The element should be slightly
+ * over-sized (e.g. scaled) by its container so the travel never reveals edges.
+ * Uses a scrubbed ScrollTrigger — GPU transform only, no React re-renders.
  */
-export function useParallax(factor: number = VIDEO_PARALLAX_FACTOR): number {
-  const [offset, setOffset] = useState(0);
-  const frame = useRef<number | null>(null);
+export function useParallax<T extends HTMLElement = HTMLDivElement>(
+  options: ParallaxOptions = {},
+) {
+  const { amount = PARALLAX.image, direction = -1 } = options;
+  const ref = useRef<T>(null);
 
-  useEffect(() => {
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || prefersReducedMotion()) return;
 
-    if (prefersReducedMotion) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        el,
+        { yPercent: (-amount / 2) * direction },
+        {
+          yPercent: (amount / 2) * direction,
+          ease: "none",
+          scrollTrigger: {
+            trigger: el,
+            start: "top bottom",
+            end: "bottom top",
+            scrub: true,
+          },
+        },
+      );
+    }, el);
 
-    const update = () => {
-      frame.current = null;
-      setOffset(window.scrollY * factor);
-    };
+    return () => ctx.revert();
+  }, [amount, direction]);
 
-    const onScroll = () => {
-      // Coalesce scroll events into one update per animation frame.
-      if (frame.current === null) {
-        frame.current = window.requestAnimationFrame(update);
-      }
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    update();
-
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (frame.current !== null) window.cancelAnimationFrame(frame.current);
-    };
-  }, [factor]);
-
-  return offset;
+  return ref;
 }

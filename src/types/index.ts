@@ -1,6 +1,6 @@
 /** Shared, reusable type definitions for the whole application. */
 
-/** A single entry in the gallery grid. */
+/** A single entry in the gallery. */
 export interface GalleryItem {
   /** Image source — always sourced from `data/assets.ts`. */
   readonly src: string;
@@ -10,6 +10,24 @@ export interface GalleryItem {
   readonly price: string;
   /** Alt text for accessibility. */
   readonly alt: string;
+}
+
+/** Horizontal placement of a gallery figure within the editorial flow. */
+export type GalleryAlign = "start" | "center" | "end";
+
+/**
+ * Presentation layout for one gallery figure. Kept in data so the composition
+ * is tunable without touching components. Cycled across all items.
+ */
+export interface GalleryLayout {
+  /** Figure width as a percentage of the content column. */
+  readonly width: number;
+  /** Which edge the figure aligns to. */
+  readonly align: GalleryAlign;
+  /** CSS aspect-ratio string, e.g. "4 / 5". */
+  readonly ratio: string;
+  /** object-position for the image, giving repeated art varied crops. */
+  readonly focus: string;
 }
 
 /** The two looping videos framing the hero section. */
@@ -27,5 +45,12 @@ export interface HeroContent {
   readonly secondaryButtonLabel: string;
 }
 
+/** A navigation link. */
+export interface NavLink {
+  readonly label: string;
+  /** Element id to smooth-scroll to. */
+  readonly target: string;
+}
+
 /** Visual/behavioral variants for the shared Button component. */
-export type ButtonVariant = "primary" | "secondary";
+export type ButtonVariant = "primary" | "secondary" | "ghost";

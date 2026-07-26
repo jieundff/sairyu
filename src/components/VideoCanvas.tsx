@@ -1,5 +1,6 @@
 import { VIDEOS } from "@/data/assets";
 import { useParallax } from "@/hooks/useParallax";
+import { PARALLAX } from "@/utils/constants";
 import { cn } from "@/utils/classNames";
 
 type VideoSide = keyof typeof VIDEOS;
@@ -11,16 +12,22 @@ interface VideoCanvasProps {
 
 /**
  * A single looping, muted background video. The `src` is read from
- * `data/assets.ts` — never hardcoded here. Motion logic lives in useParallax.
+ * `data/assets.ts` — never hardcoded here. Video behavior (autoplay, loop,
+ * muted, inline) is preserved; scroll parallax is layered on the media element
+ * and the reveal is orchestrated by the Hero via the `data-hero-video` hook.
  */
 export function VideoCanvas({ side }: VideoCanvasProps) {
-  const offset = useParallax();
+  const mediaRef = useParallax<HTMLVideoElement>({ amount: PARALLAX.subtle });
 
   return (
-    <div className={cn("video-canvas", `video-canvas--${side}`)} aria-hidden="true">
+    <figure
+      className={cn("video-figure", `video-figure--${side}`)}
+      data-hero-video=""
+      aria-hidden="true"
+    >
       <video
-        className="video-canvas__media"
-        style={{ transform: `translate3d(0, ${offset}px, 0)` }}
+        ref={mediaRef}
+        className="video-figure__media"
         src={VIDEOS[side]}
         autoPlay
         loop
@@ -28,6 +35,6 @@ export function VideoCanvas({ side }: VideoCanvasProps) {
         playsInline
         preload="metadata"
       />
-    </div>
+    </figure>
   );
 }
