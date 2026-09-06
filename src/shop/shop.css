@@ -1,0 +1,1044 @@
+/* ============================================================================
+   SAIRYU SHOP — mobile commerce component styles
+   Source: Figma "코딩용 최종" (file wKOfIKQztcJTKcwCpqk3sR, canvas 174:274).
+
+   The design has no Figma variables, so the tokens below are recovered from
+   the raw values on the artboards (see research.md §4). Figma lays every frame
+   out with absolute coordinates; those pixel values are used here only as the
+   source of proportions — the layout itself is flex/grid so it survives font
+   loading, longer copy and viewports narrower than the 423px artboard.
+   ========================================================================== */
+
+.shop {
+  /* Color */
+  --shop-ink: #000000;
+  --shop-bg: #ffffff;
+  --shop-placeholder: #d9d9d9;
+  --shop-price-strike: #9c9c9c;
+  --shop-muted: #999999;
+  --shop-note: #757575;
+  --shop-checkbox: #4c4c4c;
+  --shop-border-thumb: #ebecec;
+  --shop-border-social: #e2e3e3;
+  --shop-social-text: #1a1a1a;
+  --shop-kakao: #fce30b;
+  --shop-naver: #00bf19;
+  --shop-rule: rgba(0, 0, 0, 0.35);
+
+  /* Type */
+  --shop-font: "Pretendard Variable", Pretendard, system-ui, -apple-system,
+    sans-serif;
+  --shop-font-label: "Prompt", var(--shop-font);
+
+  --shop-fs-label: 10.6px;
+  --shop-fs-xs: 11px;
+  --shop-fs-sm: 13px;
+  --shop-fs-body: 13.5px;
+  --shop-fs-md: 15.5px;
+  --shop-fs-lg: 18px;
+  --shop-fs-price: 19.3px;
+  --shop-fs-title: 20px;
+  --shop-fs-menu: 22.6px;
+
+  /* Layout */
+  --shop-width: 423px;
+  --shop-gutter: 15px;
+  --shop-gutter-wide: 27px;
+  --shop-gutter-header: 20px;
+  --shop-radius: 5px;
+
+  background: var(--shop-bg);
+  color: var(--shop-ink);
+  font-family: var(--shop-font);
+  font-size: var(--shop-fs-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+
+/* The shop has its own HTML entry (`shop.html`), so the UA body margin has to
+   be cleared here — otherwise the 423px column sits 8px in and 16px narrow. */
+body {
+  margin: 0;
+}
+
+
+.shop *,
+.shop *::before,
+.shop *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* `:where()` keeps the reset at zero specificity, so the component classes
+   below win without every rule having to out-specify a bare element. */
+.shop :where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.shop :where(img) {
+  display: block;
+  max-width: 100%;
+}
+
+.shop :where(ul) {
+  list-style: none;
+}
+
+.shop-icon {
+  display: block;
+  flex: none;
+}
+
+/* Visually hidden but available to assistive tech. */
+.shop-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.shop-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--shop-width);
+  min-height: 100dvh;
+  margin-inline: auto;
+  background: var(--shop-bg);
+  position: relative;
+}
+
+.shop-shell__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The header floats over the artwork on the home screen. */
+.shop-shell--overlay .shop-header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+}
+
+/* ── Header (TAB BAR) ──────────────────────────────────────────────────── */
+
+.shop-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 15px var(--shop-gutter-header) 0;
+  color: var(--shop-ink);
+}
+
+.shop-header--white {
+  color: var(--shop-bg);
+}
+
+.shop-header__button {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  margin: -6px;
+}
+
+.shop-header__button:last-of-type {
+  justify-self: end;
+}
+
+.shop-header__logo {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+}
+
+.shop-header__wordmark {
+  font-family: var(--shop-font-label);
+  font-size: 17px;
+  font-weight: 300;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  line-height: 48px;
+  white-space: nowrap;
+}
+
+/* ── Page title ────────────────────────────────────────────────────────── */
+
+.shop-page-title {
+  font-size: var(--shop-fs-lg);
+  font-weight: 300;
+  text-align: center;
+  padding: 34px 0 0;
+}
+
+/* ── Button ────────────────────────────────────────────────────────────── */
+
+.shop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--shop-radius);
+  font-size: var(--shop-fs-body);
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.shop-btn--sm {
+  min-height: 41px;
+  padding-inline: 16px;
+}
+
+.shop-btn--md {
+  min-height: 51px;
+  padding-inline: 20px;
+}
+
+.shop-btn--solid {
+  background: var(--shop-ink);
+  color: var(--shop-bg);
+  border: 1px solid var(--shop-ink);
+}
+
+.shop-btn--outline {
+  background: transparent;
+  color: var(--shop-ink);
+  border: 1px solid var(--shop-ink);
+}
+
+.shop-btn--full {
+  width: 100%;
+}
+
+.shop-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Outline + solid pair — Figma `Component 5` / `주문버튼`, 393 × 53. */
+.shop-btn-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+/* ── Text field ────────────────────────────────────────────────────────── */
+
+.shop-field__input {
+  width: 100%;
+  min-height: 51px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: var(--shop-fs-lg);
+  font-weight: 300;
+  color: var(--shop-ink);
+  background: transparent;
+  border: 1px solid var(--shop-ink);
+  border-radius: var(--shop-radius);
+}
+
+.shop-field__input::placeholder {
+  color: var(--shop-ink);
+  opacity: 1;
+}
+
+/* ── Social login ──────────────────────────────────────────────────────── */
+
+.shop-social {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 67px;
+  padding-inline: 16px;
+  border: 1px solid var(--shop-border-social);
+  border-radius: var(--shop-radius);
+  color: var(--shop-social-text);
+  font-size: var(--shop-fs-md);
+  font-weight: 600;
+}
+
+.shop-social__badge {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border-radius: var(--shop-radius);
+  font-weight: 700;
+  font-size: var(--shop-fs-md);
+}
+
+.shop-social--kakao .shop-social__badge {
+  background: var(--shop-kakao);
+  color: #3c1e1e;
+}
+
+.shop-social--naver .shop-social__badge {
+  background: var(--shop-naver);
+  color: #ffffff;
+}
+
+/* ── Price ─────────────────────────────────────────────────────────────── */
+
+.shop-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  font-weight: 400;
+}
+
+.shop-price--sm {
+  font-size: var(--shop-fs-sm);
+}
+
+.shop-price--md {
+  font-size: var(--shop-fs-md);
+}
+
+.shop-price--lg {
+  font-size: var(--shop-fs-price);
+}
+
+.shop-price__original {
+  width: 100%;
+  color: var(--shop-price-strike);
+  text-decoration: line-through;
+}
+
+.shop-price__current {
+  color: var(--shop-ink);
+}
+
+.shop-price__rate {
+  color: var(--shop-ink);
+}
+
+/* ── Quantity stepper ──────────────────────────────────────────────────── */
+
+.shop-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.shop-stepper__button {
+  display: grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  padding: 8px;
+  margin: -8px;
+  box-sizing: content-box;
+}
+
+.shop-stepper__button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.shop-stepper__value {
+  min-width: 1ch;
+  font-size: var(--shop-fs-sm);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Product card — Figma `Component 6`, 175 × 326 ─────────────────────── */
+
+.shop-product-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+}
+
+.shop-product-card__media {
+  aspect-ratio: 3 / 4;
+  background: var(--shop-placeholder);
+  overflow: hidden;
+}
+
+.shop-product-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shop-product-card__name {
+  margin-top: 10px;
+  font-size: var(--shop-fs-body);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.shop-product-card__price {
+  margin-top: 12px;
+}
+
+/* ── Product grid ──────────────────────────────────────────────────────── */
+
+.shop-product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  column-gap: 19px;
+  row-gap: 50px;
+  padding-inline: var(--shop-gutter-wide);
+}
+
+/* ── Toolbar: breadcrumb + sort ────────────────────────────────────────── */
+
+.shop-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 35px var(--shop-gutter-wide) 11px;
+}
+
+.shop-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--shop-font-label);
+  font-size: var(--shop-fs-label);
+}
+
+.shop-breadcrumb__root {
+  font-family: var(--shop-font);
+  font-size: var(--shop-fs-xs);
+  font-weight: 700;
+}
+
+.shop-breadcrumb__category {
+  font-weight: 300;
+}
+
+/* ── Sort ──────────────────────────────────────────────────────────────── */
+
+.shop-sort {
+  position: relative;
+}
+
+.shop-sort__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--shop-font-label);
+  font-size: var(--shop-fs-label);
+  font-weight: 300;
+}
+
+.shop-sort__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 106px;
+  padding: 12px 14px;
+  background: var(--shop-bg);
+  border: 1px solid var(--shop-border-social);
+  border-radius: var(--shop-radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.shop-sort__option {
+  font-family: var(--shop-font-label);
+  font-size: var(--shop-fs-label);
+  font-weight: 300;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--shop-muted);
+}
+
+.shop-sort__option--active {
+  color: var(--shop-ink);
+}
+
+/* ── Cart line — Figma `Component 4` ───────────────────────────────────── */
+
+.shop-cart-line {
+  display: grid;
+  gap: 12px 20px;
+}
+
+.shop-cart-line__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shop-cart-line__checkbox {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--shop-checkbox);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: var(--shop-ink);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.shop-cart-line__remove {
+  display: flex;
+  padding: 4px;
+  margin: -4px;
+}
+
+.shop-cart-line__main {
+  display: flex;
+  gap: 20px;
+}
+
+.shop-cart-line__media {
+  flex: none;
+  aspect-ratio: 3 / 4;
+  background: var(--shop-placeholder);
+  border: 1.5px solid var(--shop-border-thumb);
+  overflow: hidden;
+}
+
+.shop-cart-line--confirm .shop-cart-line__media {
+  width: 137px;
+}
+
+.shop-cart-line--list .shop-cart-line__media {
+  width: 103px;
+}
+
+.shop-cart-line__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shop-cart-line__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.shop-cart-line__name {
+  font-size: var(--shop-fs-body);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Wrapped in hairlines on the cart list screen. */
+.shop-cart-line--list {
+  padding-block: 13px;
+  border-top: 1.5px solid var(--shop-rule);
+  border-bottom: 1.5px solid var(--shop-rule);
+}
+
+/* ── Order summary — Figma `Component 7` ───────────────────────────────── */
+
+.shop-order-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shop-order-summary__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shop-order-summary__label {
+  font-size: var(--shop-fs-md);
+  font-weight: 600;
+}
+
+.shop-order-summary__value {
+  font-size: var(--shop-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
+
+.shop-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-bottom: 1px solid var(--shop-rule);
+}
+
+.shop-tabs__tab {
+  padding: 12px 0 14px;
+  font-size: var(--shop-fs-md);
+  font-weight: 600;
+  color: var(--shop-muted);
+}
+
+.shop-tabs__tab--active {
+  color: var(--shop-ink);
+}
+
+/* ── Size guide ────────────────────────────────────────────────────────── */
+
+.shop-size-guide__caption {
+  font-family: var(--shop-font-label);
+  font-size: var(--shop-fs-xs);
+  font-weight: 300;
+  margin-bottom: 10px;
+}
+
+.shop-size-guide__table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Figma sets these cells at 9px, which is unreadable on a real handset;
+     lifted to 11px (see plan.md §5, trade-off 2). */
+  font-size: var(--shop-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-size-guide__table th,
+.shop-size-guide__table td {
+  padding: 6px 4px;
+  text-align: center;
+  border: 1px solid var(--shop-border-social);
+  font-weight: 400;
+}
+
+.shop-size-guide__table thead th {
+  font-family: var(--shop-font-label);
+  font-weight: 300;
+}
+
+/* ── Policy list ───────────────────────────────────────────────────────── */
+
+.shop-policy__title {
+  font-family: var(--shop-font-label);
+  font-size: var(--shop-fs-xs);
+  font-weight: 300;
+  margin-bottom: 10px;
+}
+
+.shop-policy__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--shop-fs-xs);
+  line-height: 1.5;
+}
+
+.shop-policy__item {
+  display: flex;
+  gap: 6px;
+}
+
+.shop-policy__bullet {
+  flex: none;
+}
+
+/* ── Collection strip ──────────────────────────────────────────────────── */
+
+.shop-collection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shop-collection__looks {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.shop-collection__looks::-webkit-scrollbar {
+  display: none;
+}
+
+.shop-collection__look {
+  flex: none;
+  width: 38px;
+  aspect-ratio: 3 / 4;
+  background: var(--shop-placeholder);
+  object-fit: cover;
+}
+
+.shop-collection__label {
+  align-self: flex-start;
+  padding: 3px 8px;
+  background: var(--shop-placeholder);
+  border-radius: 999px;
+  font-family: var(--shop-font-label);
+  font-size: 9px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+
+.shop-empty {
+  padding: 90px 0;
+  text-align: center;
+  font-size: var(--shop-fs-lg);
+  font-weight: 300;
+}
+
+/* ── Search field ──────────────────────────────────────────────────────── */
+
+.shop-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--shop-placeholder);
+}
+
+.shop-search__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--shop-ink);
+  background: transparent;
+  border: none;
+  outline-offset: 4px;
+}
+
+.shop-search__input::placeholder {
+  color: var(--shop-placeholder);
+  opacity: 1;
+}
+
+.shop-search__button {
+  display: flex;
+  padding: 4px;
+  margin: -4px;
+}
+
+/* ── Nav menu ──────────────────────────────────────────────────────────── */
+
+.shop-nav-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 53px;
+}
+
+.shop-nav-menu__item {
+  font-size: var(--shop-fs-menu);
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* ── Side drawer ───────────────────────────────────────────────────────── */
+
+.shop-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  background: var(--shop-bg);
+}
+
+.shop-drawer__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--shop-width);
+  padding: 22px 38px 40px;
+}
+
+.shop-drawer__close {
+  align-self: flex-end;
+  display: flex;
+  padding: 6px;
+  margin: -6px;
+}
+
+.shop-drawer__menu {
+  margin-top: 78px;
+}
+
+.shop-drawer__search {
+  margin-top: 22px;
+}
+
+.shop-drawer__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shop-drawer__links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  font-size: 17.2px;
+}
+
+.shop-drawer__mark {
+  font-family: "Fraunces Variable", Fraunces, serif;
+  font-size: 52px;
+  font-style: italic;
+  line-height: 1;
+}
+
+/* ── Screens ───────────────────────────────────────────────────────────── */
+
+.shop-home {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.shop-home__hero {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: cover;
+}
+
+.shop-home__links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px var(--shop-gutter-header) 28px;
+  font-size: 17.2px;
+  font-weight: 300;
+  align-items: flex-start;
+}
+
+.shop-about {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 40px var(--shop-gutter) 40px;
+}
+
+.shop-about__heading {
+  font-size: var(--shop-fs-lg);
+  font-weight: 300;
+}
+
+.shop-about__image {
+  width: 100%;
+  aspect-ratio: 393 / 261;
+  object-fit: cover;
+  background: var(--shop-placeholder);
+}
+
+.shop-about__body {
+  font-size: var(--shop-fs-sm);
+  line-height: 1.7;
+}
+
+.shop-archive {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  padding: 22px var(--shop-gutter-wide) 48px;
+  background: linear-gradient(180deg, #eef2f7 0%, #ffffff 62%);
+}
+
+.shop-archive__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shop-archive__wordmark {
+  font-family: var(--shop-font-label);
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: 0.24em;
+}
+
+.shop-archive__tagline {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--shop-ink);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+}
+
+.shop-archive__close {
+  display: flex;
+  padding: 6px;
+  margin: -6px;
+}
+
+.shop-products {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 48px;
+}
+
+.shop-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-bottom: 48px;
+}
+
+.shop-detail__media {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  margin: 11px 0 0;
+  background: var(--shop-placeholder);
+  object-fit: cover;
+}
+
+.shop-detail__intro {
+  padding: 17px var(--shop-gutter) 0;
+}
+
+.shop-detail__name {
+  font-size: var(--shop-fs-title);
+  font-weight: 600;
+}
+
+.shop-detail__price {
+  margin-top: 9px;
+}
+
+.shop-detail__option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 42px var(--shop-gutter) 0;
+}
+
+.shop-detail__option-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--shop-fs-body);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.shop-detail__option-price {
+  font-size: var(--shop-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-detail__total {
+  margin: 20px var(--shop-gutter) 0;
+  font-size: var(--shop-fs-sm);
+}
+
+.shop-detail__actions {
+  margin: 22px var(--shop-gutter) 0;
+}
+
+.shop-detail__tabs {
+  margin: 46px var(--shop-gutter) 0;
+}
+
+.shop-detail__panel {
+  margin: 22px var(--shop-gutter) 0;
+}
+
+.shop-detail__panel-image {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--shop-placeholder);
+  object-fit: cover;
+}
+
+.shop-login {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 34px var(--shop-gutter) 48px;
+}
+
+.shop-login__submit {
+  margin-top: 3px;
+}
+
+.shop-login__links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 22px;
+  font-size: var(--shop-fs-md);
+  font-weight: 600;
+  color: var(--shop-muted);
+}
+
+.shop-login__link + .shop-login__link {
+  position: relative;
+}
+
+.shop-login__link + .shop-login__link::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 1px;
+  height: 15px;
+  background: var(--shop-muted);
+}
+
+.shop-login__social {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 32px;
+}
+
+.shop-cart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 40px;
+}
+
+.shop-cart__lines {
+  display: flex;
+  flex-direction: column;
+  margin: 48px var(--shop-gutter-wide) 0;
+}
+
+.shop-cart__summary {
+  margin: 26px var(--shop-gutter-wide) 0;
+}
+
+.shop-cart__note {
+  margin: 17px var(--shop-gutter) 0;
+  text-align: center;
+  font-size: var(--shop-fs-sm);
+  font-weight: 500;
+  color: var(--shop-note);
+}
+
+/* Figma anchors the order bar near the bottom of the artboard; `auto` here
+   reproduces that without pinning it to a coordinate. */
+.shop-cart__actions {
+  margin: auto var(--shop-gutter) 0;
+}

@@ -10,4 +10,13 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      // Two entries: the editorial site at `/`, the shop at `/shop.html`.
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        shop: fileURLToPath(new URL("./shop.html", import.meta.url)),
+      },
+    },
+  },
 });
