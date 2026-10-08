@@ -8,14 +8,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap">
 <style>
-  /* Layout: one full-bleed canvas; a drifting node network over a faint grid, HUD readouts in the four corners */
+  /* Layout: one full-bleed canvas; a rotating dotted globe carrying a node network over a faint grid, HUD readouts in the four corners */
   :root {
     --bg: #1a1a1c;
     --grid: rgba(255, 255, 255, 0.045);
-    --line: rgba(255, 255, 255, 0.16);
+    --line: rgba(255, 255, 255, 0.2);
     --node: #e9e9ec;
+    --land: #d9d9de;
     --amber: #e4a94e;
-    --amber-line: rgba(228, 169, 78, 0.55);
+    --amber-line: rgba(228, 169, 78, 0.6);
     --hud: #f1f1f3;
     --font: "Outfit", "Helvetica Neue", Arial, sans-serif;
     color-scheme: dark;
@@ -27,14 +28,14 @@
 </head>
 <body>
 
-<canvas id="map" role="img" aria-label="점과 선으로 이어진 데이터 지도가 움직이며 좌표, 정확도, 문맥 수치가 계속 바뀌는 애니메이션"></canvas>
+<canvas id="map" role="img" aria-label="점으로 된 지구본이 자전하고, 실제 도시 위치의 점과 선이 함께 돌며 좌표, 정확도, 문맥 수치가 계속 바뀌는 애니메이션"></canvas>
 
 <script>
 (() => {
   const css = getComputedStyle(document.documentElement);
   const C = (name) => css.getPropertyValue(name).trim();
   const COLORS = {
-    bg: C("--bg"), grid: C("--grid"), line: C("--line"), node: C("--node"),
+    bg: C("--bg"), grid: C("--grid"), line: C("--line"), node: C("--node"), land: C("--land"),
     amber: C("--amber"), amberLine: C("--amber-line"), hud: C("--hud"),
   };
   const FONT = C("--font");
@@ -42,7 +43,16 @@
   const SPACE_W = 1100, SPACE_H = 720;  // coordinate space the readouts are printed in
   const GRID_STEP = 44;                 // px between faint grid lines
   const STAT_INTERVAL = 0.12;           // seconds between HUD readout changes
-  const DRIFT_SPEED = 2.4;              // multiplier on how fast nodes wander
+  const SPIN_PERIOD = 24;               // seconds per full turn of the globe
+  const TILT = 0.22;                    // radians the north pole leans toward the viewer
+  const START_LON = 60;                 // longitude facing the viewer at start
+  const GLOBE_SIZE = 0.4;               // globe radius as a share of the shorter screen side
+  const ARC_STEPS = 24;                 // samples per connecting arc
+
+  // Land dots: rows every 2° of latitude, dots spaced evenly along each row; one bit per dot (1 = land).
+  // Built from Natural Earth 1:50m land via world-atlas.
+  const MASK_STEP = 2;
+  const MASK = "////////8ef/n3/1/z/wB///P8B54P//HwDAgf/3/wMAQAD9//8fAAAMAKDP/w8AAAAAADDweQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAYAAAAA4AAAAAAAAAAAACCAAAAAAAAcAAAAAAAAAAAAAAABAAAAAPgAAAAAAAAAAAAAABAAAAAAAH4AAAAAAAAAAADAAwAAAAAAAPwAAAAAAAAAAICAHwAAAAAAAMA/AAAA8AAAAADg4Q8AAAAAAADAfwAAAOADAAAAwP8/AAAAAAAAAP4HAAAAPwAAAAD4/wcAAAAAAAAA/wEAAMA/AAAAAPz/BwAAAAAAAAD+BwAAgP8wAAAA8P8/AAAAAAAAAOD/AQAA8B8GAAAA/v8HAAAAAAAAAPj/AQAA/A8HAAAA/P8DAAAAAAAAAPD/AwAA+D8MAAAAwP8DAAAAAAAAAMD/HwAAwP/nAAAAAPw7AAAAAAAAAAD+/wMAAPj/EQAAAAB8BgAAAAAAAADA//8BAAD8fwgAAAAAOAEAAAAAAAAA4P//AQAA/H8AAAAAAAACAAAAAAAAAMD//w8AAPj/AQAAAAAACAEAAAAAAAAA//8/AADA/wcAAABwAPAhAAAAAAAAAPz//wAAAP8/AAAAQICABwAAAAAAAADA//8DAAD4/wMAAADmQh0AAAAAAAAAAPz/BwAAwP9/AAAAMB4YAAAAAAAAAADA/x8AAAD4/w8AAIDzBQAAAAAAAAAAAPj/AQAAgP//AQAAKBwAAAAAAAAAAACA/wcAABb//z8AAKCBAQAAAAAAAAAAAPwHAAD4////AQABBEAAAAAAAAAAAAD4HwAA8P///w8ABgAAAAAAAAAAAAAABAcAAOD///8zAAyAAwEAAAAAAAAAAAwAAADw////AQAO0IMAAAAAAAAAAMAHAAAA+P//PweAA/wgAAAAAAAAAAA/AAAAAP////cDeOAHBAAAAAACAAA8AwIAAPj//98/4IdfAAAAAAAAAAB4hAEAAPD//99/wJ+/AAAAAAAAAAA8IAAAAPD//+c/8P//BQAAAAAAAMAHAAAAAP7/fz/B//9fAAAAAAAAQD8QAAAA+P//fv7//z8AAAAAAADAPwgAAAD6///f////HwAAAAAAAPr/AAAAgP93/////38AAAAAAAD8/wMAAAD/Afz///8/BAAAAACA//8BAADAH4D/////0QEAAAAA/v8HAACAAeA/////JwIAAAAA//8HAADwQP3n//8/QgAAAAD4/z8AAICj757///8HAAAAAPz/PwAA4NGD+f///xAAAADA//8LAAC+r/P///8LAAAA8P//CADA//f///8/AAAAwP//EwDA//////8fAAAA/P//AAD+//////8AAAD+//8AQPn/////BwEA4P/3AwAD/v///4EBAPh/PAAg5P///x8EYPg/HAAA5////wcB/v/DIADc////P4P//yAGgP3///+//v8zhsHn////x/+POQDf////+JaLD3Di//8BGMcDgPp/ALDHB0D8AAA+PgBwBAD0A4gAAHsEAAB+kABAAAAAAAA=";
 
   const canvas = document.getElementById("map");
   const ctx = canvas.getContext("2d");
@@ -50,54 +60,74 @@
 
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const RAD = Math.PI / 180;
+  const unit = (lat, lon) => [Math.cos(lat * RAD) * Math.sin(lon * RAD), Math.sin(lat * RAD), Math.cos(lat * RAD) * Math.cos(lon * RAD)];
 
-  // ---------- nodes ----------
+  // ---------- land dots ----------
+  const landDots = [];
+  {
+    const bytes = Uint8Array.from(atob(MASK), (ch) => ch.charCodeAt(0));
+    let i = 0;
+    for (let lat = -90 + MASK_STEP / 2; lat < 90; lat += MASK_STEP) {
+      const n = Math.max(1, Math.round((360 * Math.cos(lat * RAD)) / MASK_STEP));
+      for (let k = 0; k < n; k++, i++) {
+        if (bytes[i >> 3] & (1 << (i & 7))) landDots.push(unit(lat, -180 + ((k + 0.5) * 360) / n));
+      }
+    }
+  }
+
+  // ---------- nodes at real city positions ----------
+  // side/dy: which way the label opens and how far it shifts, so close cities don't print on top of each other.
   const CITIES = [
-    ["Sydney", 175, 62], ["London", 265, 93], ["Dubai", 470, 185], ["Paris", 963, 174],
-    ["Toronto", 1033, 430], ["Tokyo", 585, 395], ["Berlin", 690, 560],
-    ["Seoul", 285, 626], ["New York", 95, 655], ["Shanghai", 426, 700],
+    ["Sydney", -33.87, 151.21, "r", 0], ["London", 51.51, -0.13, "l", -16], ["Dubai", 25.2, 55.27, "r", 0],
+    ["Paris", 48.86, 2.35, "l", 16], ["Toronto", 43.65, -79.38, "r", -8], ["Tokyo", 35.68, 139.69, "r", 0],
+    ["Berlin", 52.52, 13.4, "r", 0], ["Seoul", 37.57, 126.98, "l", 0], ["New York", 40.71, -74.01, "r", 12],
+    ["Shanghai", 31.23, 121.47, "l", 14],
   ];
   const POINTS = [
-    [390, 154], [330, 240], [210, 255], [140, 330], [228, 331], [520, 230], [610, 255],
-    [705, 297], [749, 338], [470, 300], [410, 400], [300, 395], [775, 450], [649, 487],
-    [504, 493], [560, 545], [146, 482], [315, 520], [460, 590], [820, 640], [880, 300], [990, 560],
+    [1.35, 103.82], [19.08, 72.88], [-23.55, -46.63], [34.05, -118.24], [19.43, -99.13], [30.04, 31.24],
+    [6.52, 3.38], [-26.2, 28.05], [55.76, 37.62], [41.01, 28.98], [64.15, -21.94], [61.22, -149.9],
+    [22.32, 114.17], [13.76, 100.5], [-6.2, 106.85], [-36.85, 174.76], [-34.6, -58.38], [-12.05, -77.04],
+    [41.88, -87.63], [49.28, -123.12], [-1.29, 36.82], [28.61, 77.21],
   ];
-
   const nodes = [
-    ...CITIES.map(([name, x, y]) => ({ name, hx: x, hy: y, city: true })),
-    ...POINTS.map(([x, y]) => ({ name: "", hx: x, hy: y, city: false })),
+    ...CITIES.map(([name, lat, lon, side, dy]) => ({ name, side, dy, v: unit(lat, lon), city: true })),
+    ...POINTS.map(([lat, lon]) => ({ name: "", side: "r", dy: 0, v: unit(lat, lon), city: false })),
   ];
-  // Each node drifts on two layered sine waves per axis, so its path never visibly repeats.
-  for (const n of nodes) {
-    n.w = [rand(0.25, 0.6), rand(0.25, 0.6), rand(0.6, 1.1), rand(0.6, 1.1)];
-    n.p = [rand(0, 6.3), rand(0, 6.3), rand(0, 6.3), rand(0, 6.3)];
-    n.a = [rand(18, 38), rand(14, 30), rand(4, 10), rand(4, 10)];
-    n.x = n.hx; n.y = n.hy;
-  }
 
   const byName = (name) => nodes.findIndex((n) => n.name === name);
   const AMBER_EDGES = [
-    ["Sydney", "London"], ["Paris", "Toronto"], ["Seoul", "New York"],
-    ["Seoul", "Shanghai"], ["London", "Dubai"], ["Tokyo", "Berlin"],
+    ["Sydney", "Tokyo"], ["London", "Paris"], ["Paris", "Toronto"], ["Seoul", "Shanghai"],
+    ["London", "Dubai"], ["Tokyo", "Seoul"], ["Berlin", "Dubai"], ["New York", "Toronto"],
   ].map(([a, b]) => [byName(a), byName(b)]);
 
-  // Thin white web: every node links to its two nearest neighbours, plus a few long spans.
+  // Thin white web: every node links to its two nearest neighbours on the sphere.
+  const angle = (a, b) => Math.acos(clamp(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], -1, 1));
   const edgeKey = (a, b) => (a < b ? a + "-" + b : b + "-" + a);
   const edges = new Map();
   AMBER_EDGES.forEach(([a, b]) => edges.set(edgeKey(a, b), { a, b, amber: true }));
   nodes.forEach((n, i) => {
     nodes
-      .map((m, j) => ({ j, d: Math.hypot(m.hx - n.hx, m.hy - n.hy) }))
+      .map((m, j) => ({ j, d: angle(n.v, m.v) }))
       .filter((o) => o.j !== i)
       .sort((u, v) => u.d - v.d)
       .slice(0, 2)
       .forEach(({ j }) => { if (!edges.has(edgeKey(i, j))) edges.set(edgeKey(i, j), { a: i, b: j, amber: false }); });
   });
-  [["Paris", 7], ["Dubai", 13], ["Tokyo", 19], ["Berlin", 12], ["London", 0]].forEach(([name, k]) => {
-    const a = byName(name), b = CITIES.length + k;
-    if (!edges.has(edgeKey(a, b))) edges.set(edgeKey(a, b), { a, b, amber: false });
+
+  // Each edge is a great-circle arc lifted off the surface; sample it once, rotate the samples every frame.
+  const edgeList = [...edges.values()].map((e) => {
+    const A = nodes[e.a].v, B = nodes[e.b].v, om = angle(A, B), so = Math.sin(om);
+    const lift = 0.015 + 0.08 * (om / Math.PI);
+    const pts = [];
+    for (let s = 0; s <= ARC_STEPS; s++) {
+      const f = s / ARC_STEPS;
+      const ka = Math.sin((1 - f) * om) / so, kb = Math.sin(f * om) / so;
+      const r = 1 + lift * Math.sin(Math.PI * f);
+      pts.push([(A[0] * ka + B[0] * kb) * r, (A[1] * ka + B[1] * kb) * r, (A[2] * ka + B[2] * kb) * r]);
+    }
+    return { ...e, pts };
   });
-  const edgeList = [...edges.values()];
 
   // ---------- HUD readouts ----------
   const stats = { tokens: 1332, temp: 0.73, context: 133, accuracy: 97.5 };
@@ -109,9 +139,20 @@
     stats.accuracy = clamp(stats.accuracy + rand(-0.4, 0.4), 96.0, 99.4);
   }
 
-  // ---------- layout ----------
-  let w = 0, h = 0, dpr = 1, pad = 0, scale = 1;
-  const toScreen = (x, y) => [pad + (x / SPACE_W) * (w - pad * 2), pad + (y / SPACE_H) * (h - pad * 2)];
+  // ---------- projection ----------
+  let w = 0, h = 0, dpr = 1, scale = 1, cx = 0, cy = 0, R = 0;
+  let cosL = 1, sinL = 0;
+  const cosT = Math.cos(TILT), sinT = Math.sin(TILT);
+  // Spin about the polar axis, lean the pole toward the viewer, then project orthographically.
+  function project(p, out) {
+    const x = p[0] * cosL + p[2] * sinL;
+    const z0 = -p[0] * sinL + p[2] * cosL;
+    const y = p[1] * cosT - z0 * sinT;
+    const z = p[1] * sinT + z0 * cosT;
+    out[0] = cx + x * R; out[1] = cy - y * R; out[2] = z;
+    out[3] = z >= 0 || x * x + y * y > 1;   // hidden only when behind the ball
+    return out;
+  }
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -119,7 +160,8 @@
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     scale = clamp(Math.min(w, h) / 760, 0.62, 1.35);
-    pad = Math.max(56, Math.min(w, h) * 0.09);
+    cx = w / 2; cy = h / 2;
+    R = Math.min(w, h) * GLOBE_SIZE;
   }
 
   function drawGrid() {
@@ -133,6 +175,7 @@
 
   function drawHud() {
     const m = Math.max(18, 26 * scale);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = COLORS.hud;
     ctx.font = `600 ${Math.round(15 * scale)}px ${FONT}`;
     ctx.textBaseline = "alphabetic";
@@ -144,53 +187,79 @@
     ctx.fillText(`ACCURACY: ${stats.accuracy.toFixed(1)}%`, w - m, h - m);
   }
 
+  const tmp = [0, 0, 0, true], prev = [0, 0, 0, true];
+
   function frame(now) {
     const t = now / 1000;
-
-    const dt = t * DRIFT_SPEED;
-    for (const n of nodes) {
-      const x = n.hx + n.a[0] * Math.sin(dt * n.w[0] + n.p[0]) + n.a[2] * Math.sin(dt * n.w[2] + n.p[2]);
-      const y = n.hy + n.a[1] * Math.sin(dt * n.w[1] + n.p[1]) + n.a[3] * Math.sin(dt * n.w[3] + n.p[3]);
-      n.x = clamp(x, 0, SPACE_W); n.y = clamp(y, 0, SPACE_H);
-      [n.sx, n.sy] = toScreen(n.x, n.y);
-    }
+    const lon = START_LON * RAD + (t / SPIN_PERIOD) * Math.PI * 2;
+    cosL = Math.cos(-lon); sinL = Math.sin(-lon);
     if (t - lastStat > STAT_INTERVAL) { stepStats(); lastStat = t; }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, w, h);
     drawGrid();
 
-    // Lines first so nodes and labels sit on top.
-    ctx.lineWidth = 1;
-    for (const e of edgeList) {
-      const A = nodes[e.a], B = nodes[e.b];
-      ctx.strokeStyle = e.amber ? COLORS.amberLine : COLORS.line;
-      ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.stroke();
+    // Globe rim.
+    ctx.strokeStyle = COLORS.line;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+
+    // Land dots: the far side shows through faintly, the near side brightens toward the centre.
+    const dot = Math.max(1.2, 1.7 * scale);
+    ctx.fillStyle = COLORS.land;
+    for (const p of landDots) {
+      project(p, tmp);
+      ctx.globalAlpha = tmp[2] < 0 ? 0.06 : 0.18 + 0.5 * tmp[2];
+      ctx.fillRect(tmp[0] - dot / 2, tmp[1] - dot / 2, dot, dot);
     }
 
+    // Arcs: draw only the stretches in front of the ball.
+    ctx.lineWidth = 1;
+    for (const e of edgeList) {
+      ctx.strokeStyle = e.amber ? COLORS.amberLine : COLORS.line;
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      project(e.pts[0], prev);
+      for (let s = 1; s < e.pts.length; s++) {
+        project(e.pts[s], tmp);
+        if (prev[3] && tmp[3]) { ctx.moveTo(prev[0], prev[1]); ctx.lineTo(tmp[0], tmp[1]); }
+        prev[0] = tmp[0]; prev[1] = tmp[1]; prev[2] = tmp[2]; prev[3] = tmp[3];
+      }
+      ctx.stroke();
+    }
+
+    // Nodes and their live screen coordinates; they fade out as they turn past the rim.
     const small = Math.round(10.5 * scale), mid = Math.round(12.5 * scale);
-    ctx.textAlign = "left";
     for (const n of nodes) {
-      const coords = `${Math.round(n.x)}, ${Math.round(n.y)}`;
+      project(n.v, tmp);
+      const a = clamp(tmp[2] * 6, 0, 1);
+      if (a <= 0) continue;
+      const sx = tmp[0], sy = tmp[1];
+      const coords = `${Math.round((sx / w) * SPACE_W)}, ${Math.round((sy / h) * SPACE_H)}`;
+      const left = n.side === "l", down = n.dy * scale;
+      ctx.textAlign = left ? "right" : "left";
+      const tx = sx + (left ? -9 : 9) * scale;
       if (n.city) {
+        ctx.globalAlpha = a;
         ctx.fillStyle = COLORS.amber;
-        ctx.beginPath(); ctx.arc(n.sx, n.sy, 4.2 * scale, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx, sy, 4.2 * scale, 0, Math.PI * 2); ctx.fill();
         ctx.textBaseline = "alphabetic";
         ctx.font = `500 ${small}px ${FONT}`;
-        ctx.fillText(n.name, n.sx + 2 * scale, n.sy - 7 * scale);
-        ctx.textBaseline = "middle";
+        ctx.fillText(n.name, tx, sy - 6 * scale + down);
+        ctx.textBaseline = "top";
         ctx.font = `600 ${mid}px ${FONT}`;
-        ctx.fillText(coords, n.sx + 9 * scale, n.sy + 1);
+        ctx.fillText(coords, tx, sy - 3 * scale + down);
       } else {
         const s = 5 * scale;
+        ctx.globalAlpha = a;
         ctx.fillStyle = COLORS.node;
-        ctx.fillRect(n.sx - s / 2, n.sy - s / 2, s, s);
+        ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
         ctx.textBaseline = "middle";
         ctx.font = `500 ${small}px ${FONT}`;
-        ctx.globalAlpha = 0.82;
-        ctx.fillText(coords, n.sx + 8 * scale, n.sy + 1);
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = a * 0.75;
+        ctx.fillText(coords, tx, sy + 1);
       }
     }
 
