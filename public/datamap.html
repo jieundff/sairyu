@@ -41,7 +41,8 @@
 
   const SPACE_W = 1100, SPACE_H = 720;  // coordinate space the readouts are printed in
   const GRID_STEP = 44;                 // px between faint grid lines
-  const STAT_INTERVAL = 0.22;           // seconds between HUD readout changes
+  const STAT_INTERVAL = 0.12;           // seconds between HUD readout changes
+  const DRIFT_SPEED = 2.4;              // multiplier on how fast nodes wander
 
   const canvas = document.getElementById("map");
   const ctx = canvas.getContext("2d");
@@ -146,9 +147,10 @@
   function frame(now) {
     const t = now / 1000;
 
+    const dt = t * DRIFT_SPEED;
     for (const n of nodes) {
-      const x = n.hx + n.a[0] * Math.sin(t * n.w[0] + n.p[0]) + n.a[2] * Math.sin(t * n.w[2] + n.p[2]);
-      const y = n.hy + n.a[1] * Math.sin(t * n.w[1] + n.p[1]) + n.a[3] * Math.sin(t * n.w[3] + n.p[3]);
+      const x = n.hx + n.a[0] * Math.sin(dt * n.w[0] + n.p[0]) + n.a[2] * Math.sin(dt * n.w[2] + n.p[2]);
+      const y = n.hy + n.a[1] * Math.sin(dt * n.w[1] + n.p[1]) + n.a[3] * Math.sin(dt * n.w[3] + n.p[3]);
       n.x = clamp(x, 0, SPACE_W); n.y = clamp(y, 0, SPACE_H);
       [n.sx, n.sy] = toScreen(n.x, n.y);
     }
