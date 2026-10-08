@@ -161,8 +161,8 @@
   }
 
   // ---------- cursor cut: hovering opens a hole in the helix, pushing everything aside ----------
-  const CUT_RADIUS = 58;        // half-width of the hole around the cursor (drawing units)
-  const CUT_STRETCH = 1.45;     // hole is this many times wider than tall
+  const CUT_RADIUS = 84;        // half-width of the hole around the cursor (drawing units)
+  const CUT_STRETCH = 1.9;      // hole is this many times wider than tall
   const cut = { x: 0, y: 0, on: false, amt: 0 };
   const bent = [0, 0, 1];
   // Returns [x, y, visibility] for a point, pushed out of the hole and faded inside it.
