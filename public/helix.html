@@ -77,11 +77,12 @@
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
   });
   const GLOW_SPRITES = GLOW.map(softDot);
-  // Blurry thumbnails that sit inside the blue detection boxes.
+  // Blurry black-and-white thumbnails that sit inside the blue detection boxes.
+  const grey = (hex) => { const c = hexToRgb(hex), v = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]; return rgbToHex([v, v, v]); };
   const BOX_TEX = Array.from({ length: 8 }, (_, i) => {
     const r = rngFrom(900 + i);
     const tiny = sprite(5, 5, (g) => {
-      for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { g.fillStyle = pick(r, GLOW.concat([muted("#1b2a8a"), muted("#0d1440")])); g.fillRect(x, y, 1, 1); }
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { g.fillStyle = grey(pick(r, GLOW.concat([muted("#1b2a8a"), muted("#0d1440")]))); g.fillRect(x, y, 1, 1); }
     });
     return sprite(80, 80, (g) => { g.imageSmoothingEnabled = true; g.drawImage(tiny, 0, 0, 80, 80); });
   });
