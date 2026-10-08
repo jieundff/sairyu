@@ -358,15 +358,6 @@
     }
   }
 
-  // Thin horizontal glitch lines that flicker every frame.
-  function drawScanlines(r, light) {
-    ctx.globalAlpha = 1;
-    for (let i = 0; i < 7; i++) {
-      ctx.fillStyle = light > 0.5 ? `rgba(40,40,60,${0.03 + r() * 0.05})` : `rgba(200,210,255,${0.03 + r() * 0.1})`;
-      ctx.fillRect(0, Math.floor(r() * H), W, 1);
-    }
-  }
-
   // ---------- one frame ----------
   function render(t) {
     t = ((t % LENGTH) + LENGTH) % LENGTH;
@@ -384,7 +375,6 @@
     drawRungs(L, phase, t);
     drawStrands(L, phase, t);
     drawParticles(L, phase, t);
-    drawScanlines(rngFrom(Math.floor(t * FPS) * 7919 + 13), L.light);
     ctx.globalAlpha = 1;
   }
 
