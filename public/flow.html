@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sairyu Flow Lines</title>
+<style>
+  /* Layout: a single portrait phone centered on the page; inside, a reaction-diffusion field draws white lines on black */
+  :root {
+    --page: #141416;
+    --bezel: #050505;
+    --rim: #3a3a3e;
+    --screen: #000000;
+    --ink: #f3f3f3;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--page);
+    display: grid;
+    place-items: center;
+    padding-inline: 16px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .phone {
+    position: relative;
+    height: min(88vh, 860px);
+    max-width: 100%;
+    aspect-ratio: 9 / 19.5;
+    padding: 12px;
+    box-sizing: border-box;
+    border-radius: 54px;
+    background: var(--bezel);
+    box-shadow: 0 0 0 2px var(--rim), 0 30px 80px rgba(0, 0, 0, 0.55);
+  }
+  .phone canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 42px;
+    background: var(--screen);
+  }
+  .island {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    width: 30%;
+    height: 26px;
+    transform: translateX(-50%);
+    border-radius: 13px;
+    background: var(--bezel);
+  }
+  .fallback[hidden] { display: none; }
+  .fallback {
+    position: absolute;
+    inset: 12px;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: var(--ink);
+    font: 14px/1.5 system-ui, sans-serif;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <canvas id="screen" role="img" aria-label="검은 화면 위에서 흰 선이 크기와 형태를 바꾸며 계속 자라고 이어지는 추상 애니메이션"></canvas>
+  <div class="island"></div>
+  <p class="fallback" id="fallback" hidden>이 브라우저에서는 WebGL2 그래픽을 쓸 수 없어 애니메이션을 표시할 수 없습니다.</p>
+</div>
+
+<script>
+(() => {
+  // Grid the pattern is simulated on (portrait, same 9:19.5 ratio as the screen).
+  const SIM_W = 216, SIM_H = 468;
+  const STEPS_PER_FRAME = 30;
+  const COLLAPSE_TIME = 0.8;   // seconds the pattern takes to shrink into a seed between scenes
+
+  // Each scene is one look. f/k are the Gray-Scott feed and kill rates, wx/wy weight diffusion
+  // per axis (stretching the lines), shape 2 = oval, 8 = rounded rectangle, flow moves the field,
+  // grow pushes the whole field outward (easing off as the scene settles) so it swells like the reference.
+  const SCENES = [
+    { name: "coral",  dur: 3.2, f: 0.0545, k: 0.062, wx: 0.2,  wy: 0.2,  shape: 2, from: [0.84, 0.46], to: [0.84, 0.46], flow: "none",  grow: 0.3,  collapse: true },
+    { name: "waves",  dur: 2.6, f: 0.029,  k: 0.057, wx: 0.3,  wy: 0.1,  shape: 8, from: [0.92, 0.94], to: [0.92, 0.94], flow: "shear", grow: 0.24, collapse: false },
+    { name: "stalks", dur: 2.2, f: 0.029,  k: 0.057, wx: 0.1,  wy: 0.3,  shape: 8, from: [0.92, 0.94], to: [0.92, 0.94], flow: "none",  grow: 0,    collapse: false },
+    { name: "print",  dur: 3.0, f: 0.029,  k: 0.057, wx: 0.2,  wy: 0.2,  shape: 8, from: [0.92, 0.94], to: [0.92, 0.94], flow: "swirl", grow: 0,    collapse: false },
+    { name: "maze",   dur: 2.2, f: 0.029,  k: 0.057, wx: 0.2,  wy: 0.2,  shape: 8, from: [0.92, 0.94], to: [0.92, 0.94], flow: "twist", grow: 0,    collapse: true },
+  ];
+  const FLOWS = { none: 0, shear: 1, swirl: 2, twist: 3 };
+
+  const canvas = document.getElementById("screen");
+  const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false });
+  if (!gl || !gl.getExtension("EXT_color_buffer_float")) {
+    document.getElementById("fallback").hidden = false;
+    return;
+  }
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Reduced motion: let the pattern settle slowly instead of racing through scenes.
+  if (reduceMotion) SCENES.forEach((sc) => { sc.dur *= 3; });
+
+  const VERT = `#version 300 es
+  in vec2 pos; out vec2 uv;
+  void main() { uv = pos * 0.5 + 0.5; gl_Position = vec4(pos, 0.0, 1.0); }`;
+
+  // One simulation step: advect, diffuse, react, then clip to the growing shape.
+  const STEP = `#version 300 es
+  precision highp float;
+  in vec2 uv; out vec4 o;
+  uniform sampler2D state;
+  uniform vec2 texel, half_, aspect;
+  uniform float f, k, wx, wy, shape, flow, grow, time;
+  void main() {
+    vec2 p = (uv - 0.5) * aspect;           // centered, aspect-correct
+    vec2 vel = p * grow;
+    if (flow == 1.0) vel += vec2(sin(p.y * 7.0 + time * 1.6) * 0.35, 0.0);
+    else if (flow == 2.0) vel += vec2(-p.y, p.x) * 1.6 * exp(-dot(p, p) * 3.0);
+    else if (flow == 3.0) vel += vec2(-p.y, p.x) * 1.4 * exp(-dot(p, p) * 2.0);
+    vec2 q = uv - vel * texel * 1.2;
+
+    vec2 c = texture(state, q).xy;
+    vec2 l = texture(state, q - vec2(texel.x, 0.0)).xy, r = texture(state, q + vec2(texel.x, 0.0)).xy;
+    vec2 d = texture(state, q - vec2(0.0, texel.y)).xy, u = texture(state, q + vec2(0.0, texel.y)).xy;
+    vec2 dg = texture(state, q + texel).xy + texture(state, q - texel).xy
+            + texture(state, q + vec2(texel.x, -texel.y)).xy + texture(state, q + vec2(-texel.x, texel.y)).xy;
+    vec2 lap = wx * (l + r - 2.0 * c) + wy * (u + d - 2.0 * c) + 0.05 * (dg - 4.0 * c);
+
+    float a = c.x, b = c.y, abb = a * b * b;
+    a += 1.0 * lap.x - abb + f * (1.0 - a);
+    b += 0.5 * lap.y + abb - (k + f) * b;
+
+    // Superellipse mask: oval at shape 2, rounded rectangle as it grows.
+    vec2 m = abs(p / (half_ * aspect * 0.5));
+    float s = pow(pow(m.x, shape) + pow(m.y, shape), 1.0 / shape);
+    if (s > 1.0) { a = 1.0; b = 0.0; }
+
+    o = vec4(clamp(a, 0.0, 1.0), clamp(b, 0.0, 1.0), 0.0, 1.0);
+  }`;
+
+  // Display: threshold the smooth field into crisp white lines.
+  const SHOW = `#version 300 es
+  precision highp float;
+  in vec2 uv; out vec4 o;
+  uniform sampler2D state;
+  void main() {
+    float b = texture(state, uv).y;
+    float w = smoothstep(0.17, 0.27, b);
+    o = vec4(vec3(w * 0.953), 1.0);
+  }`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, "pos");
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {};
+    for (let i = 0; i < gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i++) {
+      const name = gl.getActiveUniform(p, i).name;
+      u[name] = gl.getUniformLocation(p, name);
+    }
+    return { p, u };
+  }
+  const step = program(STEP), show = program(SHOW);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  // Start: chemical A everywhere, a small ring of B in the middle (slightly uneven, so the pattern never mirrors perfectly).
+  function initialState() {
+    const data = new Float32Array(SIM_W * SIM_H * 4);
+    for (let y = 0; y < SIM_H; y++) for (let x = 0; x < SIM_W; x++) {
+      const i = (y * SIM_W + x) * 4;
+      const d = Math.hypot(x - SIM_W / 2, (y - SIM_H / 2) * 0.9);
+      data[i] = 1; data[i + 1] = d > 6 && d < 11 ? 0.75 + Math.random() * 0.25 : 0; data[i + 3] = 1;
+    }
+    return data;
+  }
+  const init = initialState();
+  const targets = [0, 1].map(() => {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, SIM_W, SIM_H, 0, gl.RGBA, gl.FLOAT, init);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    return { tex, fb };
+  });
+  // Smooth display needs linear filtering of float textures; fall back to nearest without it.
+  const linear = !!gl.getExtension("OES_texture_float_linear");
+  let cur = 0;
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const r = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(r.width * dpr));
+    canvas.height = Math.max(1, Math.round(r.height * dpr));
+  }
+
+  const ease = (t) => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 3);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const totalDur = SCENES.reduce((s, sc) => s + sc.dur + (sc.collapse ? COLLAPSE_TIME : 0), 0);
+  // Timeline runs on simulation time (one tick per frame), so every device sees the same sequence.
+  let simTime = 0;
+
+  function sceneAt(t) {
+    let local = t % totalDur;
+    for (let i = 0; i < SCENES.length; i++) {
+      const sc = SCENES[i], len = sc.dur + (sc.collapse ? COLLAPSE_TIME : 0);
+      if (local < len) return { i, sc, local };
+      local -= len;
+    }
+    return { i: 0, sc: SCENES[0], local: 0 };
+  }
+
+  function frame(now) {
+    const t = simTime;
+    simTime += 1 / 60;
+    const { sc, local } = sceneAt(t);
+
+    let half;
+    if (local < sc.dur) {
+      const g = ease(local / (sc.dur * 0.6));
+      half = [lerp(sc.from[0], sc.to[0], g), lerp(sc.from[1], sc.to[1], g)];
+    } else {
+      // Collapse: squeeze the mask down to a small oval that seeds the next scene.
+      const c = ease((local - sc.dur) / COLLAPSE_TIME);
+      half = [lerp(sc.to[0], 0.07, c), lerp(sc.to[1], 0.04, c)];
+    }
+    const shape = local < sc.dur ? sc.shape : lerp(sc.shape, 2, ease((local - sc.dur) / COLLAPSE_TIME));
+
+    gl.useProgram(step.p);
+    gl.viewport(0, 0, SIM_W, SIM_H);
+    gl.uniform2f(step.u.texel, 1 / SIM_W, 1 / SIM_H);
+    gl.uniform2f(step.u.aspect, 1, SIM_H / SIM_W);
+    gl.uniform2f(step.u.half_, half[0], half[1]);
+    gl.uniform1f(step.u.f, sc.f); gl.uniform1f(step.u.k, sc.k);
+    gl.uniform1f(step.u.wx, sc.wx); gl.uniform1f(step.u.wy, sc.wy);
+    gl.uniform1f(step.u.shape, shape);
+    gl.uniform1f(step.u.flow, local < sc.dur ? FLOWS[sc.flow] : 0);
+    // Swell while the scene opens, then hold; pull inward while collapsing.
+    gl.uniform1f(step.u.grow, local < sc.dur ? sc.grow * (1 - ease(local / (sc.dur * 0.75))) : -0.9);
+    gl.uniform1i(step.u.state, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    for (let s = 0; s < STEPS_PER_FRAME; s++) {
+      gl.uniform1f(step.u.time, t + s * 0.001);
+      gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, targets[1 - cur].fb);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      cur = 1 - cur;
+    }
+
+    gl.useProgram(show.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+    const filter = linear ? gl.LINEAR : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.uniform1i(show.u.state, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("resize", resize);
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
