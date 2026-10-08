@@ -17,20 +17,33 @@
 </head>
 <body>
 
-<canvas id="helix" width="1080" height="1776" role="img" aria-label="DNA 이중나선이 입자, 박스, 좌표 숫자와 함께 여러 형태로 빠르게 바뀌는 10초 그래픽"></canvas>
+<canvas id="helix" width="1080" height="1776" role="img" aria-label="DNA 이중나선이 입자, 박스, 좌표 숫자와 함께 여러 형태로 매끄럽게 바뀌는 10초 그래픽"></canvas>
 
 <script>
 (() => {
   const W = 540, H = 888, SCALE = 2, FPS = 30, LENGTH = 10;   // drawing space, pixel density (→ 1080×1776), frame rate, loop seconds
+  const SATURATION = 0.78;      // colour patterns are pulled this far toward grey (1 = original colours)
+  const SPARKLE_SCALE = 0.5;    // size of the starburst sparkles
+  const HOLD = 0.3;             // share of each stretch that holds a look before morphing into the next
   const canvas = document.getElementById("helix");
   const ctx = canvas.getContext("2d");
 
+  // ---------- colour ----------
+  const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const rgbToHex = (c) => "#" + c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+  function muted(hex) {
+    const c = hexToRgb(hex), g = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+    return rgbToHex(c.map((v) => g + (v - g) * SATURATION));
+  }
   const BG = { dark: "#07080b", cream: "#f2ece2", light: "#e4e4e8", navy: "#090b22" };
-  const GLOW = ["#f6b9d8", "#cbb8ff", "#3fc8c8", "#2a9ea6", "#3b5cff", "#2b3fc0", "#ffd56e", "#f5f2ff"];
-  const INK = ["#1d3550", "#b8396a", "#d4a238", "#2c6b5d", "#142033", "#7a4f9a"];
+  const GLOW = ["#f6b9d8", "#cbb8ff", "#3fc8c8", "#2a9ea6", "#3b5cff", "#2b3fc0", "#ffd56e", "#f5f2ff"].map(muted);
+  const INK = ["#1d3550", "#b8396a", "#d4a238", "#2c6b5d", "#142033", "#7a4f9a"].map(muted);
+  const MOLECULE = ["#ffd56e", "#f6b9d8", "#f5f2ff", "#cbb8ff"].map(muted);
+  const RAYS = ["#f2eeff", "#9fe6ff", "#f8c7e2"].map(muted);
+  const BOX_LINE = muted("#4d7bff"), BOX_LINE_LIGHT = muted("#c79a1e");
   const GLYPHS = "01+×·◦#=*%8o:x".split("");
 
-  // ---------- seeded randomness so every frame renders the same way twice ----------
+  // ---------- seeded randomness ----------
   function rngFrom(seed) {
     let a = seed >>> 0;
     return () => {
@@ -41,6 +54,9 @@
     };
   }
   const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  const smooth = (t) => t * t * (3 - 2 * t);
 
   // ---------- pre-rendered sprites ----------
   function sprite(w, h, draw) {
@@ -66,83 +82,107 @@
   const BOX_TEX = Array.from({ length: 8 }, (_, i) => {
     const r = rngFrom(900 + i);
     const tiny = sprite(5, 5, (g) => {
-      for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { g.fillStyle = pick(r, GLOW.concat(["#1b2a8a", "#0d1440"])); g.fillRect(x, y, 1, 1); }
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { g.fillStyle = pick(r, GLOW.concat([muted("#1b2a8a"), muted("#0d1440")])); g.fillRect(x, y, 1, 1); }
     });
     return sprite(80, 80, (g) => { g.imageSmoothingEnabled = true; g.drawImage(tiny, 0, 0, 80, 80); });
   });
 
   // ---------- looks ----------
-  // turns: helix turns over the height, amp: swing as a share of width, band: strand thickness,
-  // ribbon: the two strands run close together like one twisted ribbon, tilt: lean that turns the coils into loops.
-  const BASE = { bg: "dark", turns: 2, amp: 0.3, band: 24, rungs: true, labels: true, particles: 1.0, boxes: 0.12,
-    tilt: 0, ribbon: false, glow: false, alpha: 1, strands: true, scatter: false, glyphField: false, speed: 1.3 };
+  // Every value is a number so neighbouring looks can blend: turns over the height, amp as a share of width,
+  // band = strand thickness, ribbon 1 = strands run together as one twisted ribbon, tilt leans coils into loops,
+  // scatter 1 = particles leave the strands, field = loose glyph clusters, light = pale background with dark ink.
+  const BASE = { bg: "dark", turns: 2, amp: 0.3, band: 24, rungs: 1, labels: 1, particles: 1.0, boxes: 0.12,
+    tilt: 0, ribbon: 0, glow: 0, alpha: 1, strands: 1, scatter: 0, rows: 0, field: 0 };
   const LOOK = {
-    helix:      {},
-    helixBusy:  { particles: 1.6, boxes: 0.2 },
-    creamRungs: { bg: "cream", turns: 3.3, amp: 0.21, band: 16, labels: false, particles: 0, boxes: 0 },
-    creamZig:   { bg: "cream", turns: 2.4, amp: 0.34, band: 70, ribbon: true, rungs: false, labels: false, particles: 0, boxes: 0 },
-    zig:        { turns: 4.6, amp: 0.33, band: 44, ribbon: true, glow: true, rungs: false, particles: 0.55, boxes: 0.03 },
-    zigBoxes:   { turns: 4.6, amp: 0.33, band: 44, ribbon: true, glow: true, rungs: false, particles: 0.5, boxes: 0.35 },
-    wide:       { turns: 1.05, amp: 0.27, band: 150, ribbon: true, glow: true, rungs: false, particles: 0.45, boxes: 0.1 },
-    wideBoxes:  { turns: 1.05, amp: 0.27, band: 150, ribbon: true, glow: true, rungs: false, particles: 0.35, boxes: 0.6 },
-    scatter:    { scatter: true, particles: 2.4, boxes: 0.12 },
-    scatterBox: { scatter: true, particles: 1.8, boxes: 0.5 },
-    lightScatter: { bg: "light", scatter: true, particles: 1.3, boxes: 0 },
-    lightHelix: { bg: "light", turns: 1.05, amp: 0.3, band: 18, labels: false, rungs: false, particles: 1.0, boxes: 0 },
-    lightWide:  { bg: "light", turns: 1.05, amp: 0.27, band: 150, ribbon: true, rungs: false, labels: false, particles: 0.7, boxes: 0.5 },
-    dim:        { turns: 3, amp: 0.27, band: 18, particles: 0.35, boxes: 0, alpha: 0.38 },
-    dimmer:     { scatter: true, glyphField: true, particles: 0, boxes: 0, alpha: 0.16 },
-    wire:       { turns: 1.5, amp: 0.31, band: 22, particles: 0, boxes: 0 },
-    wireTight:  { turns: 4.2, amp: 0.2, band: 14, particles: 0, boxes: 0, labels: false },
-    wireNavy:   { bg: "navy", turns: 1.5, amp: 0.31, band: 22, particles: 0, boxes: 0 },
-    rings:      { turns: 3.2, amp: 0.33, band: 20, tilt: 0.62, rungs: false, particles: 0.9, boxes: 0.18 },
-    boxRows:    { strands: false, particles: 0.25, boxes: 0.9, labels: false },
-    creamField: { bg: "cream", scatter: true, glyphField: true, particles: 0, boxes: 0 },
+    helix:        {},
+    helixBusy:    { particles: 1.5, boxes: 0.2 },
+    creamRungs:   { bg: "cream", turns: 3.3, amp: 0.21, band: 16, labels: 0, particles: 0, boxes: 0 },
+    creamZig:     { bg: "cream", turns: 2.4, amp: 0.34, band: 70, ribbon: 1, rungs: 0, labels: 0, particles: 0, boxes: 0 },
+    zig:          { turns: 4.6, amp: 0.33, band: 44, ribbon: 1, glow: 1, rungs: 0, particles: 0.6, boxes: 0.05 },
+    wide:         { turns: 1.05, amp: 0.27, band: 150, ribbon: 1, glow: 1, rungs: 0, labels: 0, particles: 0.5, boxes: 0.1 },
+    wideBoxes:    { turns: 1.05, amp: 0.27, band: 150, ribbon: 1, glow: 1, rungs: 0, labels: 0, particles: 0.4, boxes: 0.6 },
+    scatter:      { scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 2.2, boxes: 0.12 },
+    scatterBox:   { scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 1.7, boxes: 0.5 },
+    lightScatter: { bg: "light", scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 1.3, boxes: 0 },
+    lightHelix:   { bg: "light", turns: 1.05, amp: 0.3, band: 18, labels: 0, rungs: 0, particles: 1.0, boxes: 0 },
+    lightWide:    { bg: "light", turns: 1.05, amp: 0.27, band: 150, ribbon: 1, rungs: 0, labels: 0, particles: 0.7, boxes: 0.5 },
+    dim:          { turns: 3, amp: 0.27, band: 18, particles: 0.35, boxes: 0, alpha: 0.38 },
+    dimmer:       { turns: 3, amp: 0.27, band: 18, strands: 0.3, rungs: 0, labels: 0, field: 1, particles: 0, boxes: 0, alpha: 0.18 },
+    wire:         { turns: 1.5, amp: 0.31, band: 22, particles: 0, boxes: 0 },
+    wireTight:    { turns: 4.2, amp: 0.2, band: 14, particles: 0, boxes: 0, labels: 0 },
+    wireNavy:     { bg: "navy", turns: 1.5, amp: 0.31, band: 22, particles: 0, boxes: 0 },
+    rings:        { turns: 3.2, amp: 0.33, band: 20, tilt: 0.62, rungs: 0, particles: 0.9, boxes: 0.18 },
+    boxRows:      { strands: 0, scatter: 1, rows: 1, rungs: 0, labels: 0, particles: 0.25, boxes: 0.9 },
+    creamField:   { bg: "cream", strands: 0, scatter: 1, rungs: 0, labels: 0, field: 1, particles: 0, boxes: 0 },
   };
 
-  // ---------- the 10-second cut list (start time in seconds → look) ----------
-  const CUTS = [
-    [0.0, "scatterBox"], [0.2, "scatter"], [0.4, "helix"], [0.6, "helixBusy"], [0.9, "creamRungs"],
-    [1.2, "creamZig"], [1.4, "zig"], [1.6, "scatter"], [1.8, "zig"], [1.9, "wide"], [2.1, "helix"],
-    [2.4, "rings"], [2.5, "zig"], [2.9, "scatter"], [3.1, "lightScatter"], [3.4, "helixBusy"],
-    [3.9, "dim"], [4.2, "dimmer"], [4.7, "scatter"], [4.9, "helix"], [5.0, "lightHelix"],
-    [5.2, "lightWide"], [5.4, "wide"], [5.6, "wireTight"], [5.9, "zigBoxes"], [6.2, "scatter"],
-    [6.4, "wire"], [6.9, "rings"], [7.4, "scatterBox"], [7.5, "boxRows"], [7.9, "wireNavy"],
-    [8.1, "helixBusy"], [8.4, "rings"], [8.8, "creamField"], [9.3, "scatter"], [9.4, "wideBoxes"],
-    [9.9, "zig"],
+  // ---------- the 10-second sequence (time in seconds → look); each look morphs into the next ----------
+  const KEYS = [
+    [0.0, "scatterBox"], [0.5, "helixBusy"], [1.0, "creamRungs"], [1.45, "creamZig"], [1.9, "zig"],
+    [2.4, "wide"], [2.9, "helix"], [3.3, "lightScatter"], [3.8, "helixBusy"], [4.3, "dim"],
+    [4.7, "dimmer"], [5.0, "lightHelix"], [5.4, "lightWide"], [5.8, "wide"], [6.2, "wireTight"],
+    [6.6, "wire"], [7.0, "rings"], [7.5, "boxRows"], [7.9, "wireNavy"], [8.3, "rings"],
+    [8.8, "creamField"], [9.3, "scatter"], [9.6, "wideBoxes"],
   ];
+  const resolved = (name) => {
+    const L = Object.assign({}, BASE, LOOK[name]);
+    L.bgRgb = hexToRgb(BG[L.bg]);
+    L.light = L.bg === "cream" || L.bg === "light" ? 1 : 0;
+    return L;
+  };
+  const KEY_LOOKS = KEYS.map(([, name]) => resolved(name));
+
+  function lookAt(t) {
+    let i = 0;
+    while (i + 1 < KEYS.length && KEYS[i + 1][0] <= t) i++;
+    const start = KEYS[i][0], end = i + 1 < KEYS.length ? KEYS[i + 1][0] : LENGTH;
+    const a = KEY_LOOKS[i], b = KEY_LOOKS[(i + 1) % KEYS.length];   // the last look flows back into the first
+    const u = (t - start) / (end - start);
+    const m = smooth(clamp01((u - HOLD) / (1 - HOLD)));
+    const L = {};
+    for (const key of Object.keys(BASE)) if (typeof BASE[key] === "number") L[key] = lerp(a[key], b[key], m);
+    L.bgRgb = a.bgRgb.map((v, j) => lerp(v, b.bgRgb[j], m));
+    L.light = lerp(a.light, b.light, m);
+    return L;
+  }
 
   // ---------- helix geometry ----------
   function strandPoint(L, k, y, phase) {
-    const th = (y / H) * L.turns * Math.PI * 2 + phase + k * (L.ribbon ? Math.PI * 0.22 : Math.PI);
+    // Measured from the middle of the screen so changing the number of turns twists around the centre.
+    const th = ((y - H / 2) / H) * L.turns * Math.PI * 2 + phase + k * Math.PI * lerp(1, 0.22, L.ribbon);
     const ampPx = L.amp * W;
     const z = Math.cos(th);
     return {
       x: W / 2 + ampPx * Math.sin(th),
       y: y + L.tilt * ampPx * 0.5 * z,
       z,
-      // slope of the strand, used to lay glyphs across it
       dx: ampPx * Math.cos(th) * (L.turns * Math.PI * 2) / H,
     };
   }
 
-  function drawGlyph(set, r, x, y, a) {
-    ctx.globalAlpha = a;
-    ctx.drawImage(pick(r, set), x - 8, y - 9, 16, 18);
+  // Glyphs in pale and dark ink at once, weighted by how light the background currently is.
+  function drawGlyph(r, x, y, a, light) {
+    const g = Math.floor(r() * GLYPHS.length);
+    if (light < 1) { ctx.globalAlpha = a * (1 - light); ctx.drawImage(GLYPH.light[g], x - 8, y - 9, 16, 18); }
+    if (light > 0) { ctx.globalAlpha = a * light; ctx.drawImage(GLYPH.dark[g], x - 8, y - 9, 16, 18); }
   }
 
-  function drawStrands(L, phase, r, inkSet, light) {
-    const step = L.ribbon ? 9 : 7;
+  function drawStrands(L, phase, t) {
+    const vis = L.strands * L.alpha;
+    if (vis < 0.01) return;
+    const step = lerp(7, 9, L.ribbon);
+    const tick = Math.floor(t * 8);   // glyphs reshuffle eight times a second, not every frame
     for (let k = 0; k < 2; k++) {
-      for (let y = -60; y < H + 60; y += step) {
+      for (let y = -60, idx = 0; y < H + 60; y += step, idx++) {
+        const r = rngFrom(k * 100003 + idx * 131 + tick * 7);
         const p = strandPoint(L, k, y, phase);
         const depth = 0.35 + 0.65 * (p.z + 1) / 2;
         const len = Math.hypot(p.dx, 1);
-        const nx = 1 / len, ny = -p.dx / len;   // across the strand
+        const nx = 1 / len, ny = -p.dx / len;
         const n = Math.max(2, Math.round(L.band / 8));
-        if (L.glow && !light && r() < 0.18) {
+        if (L.glow * (1 - L.light) > 0.02 && r() < 0.18) {
           ctx.globalCompositeOperation = "lighter";
-          ctx.globalAlpha = 0.16 * Math.min(1, 40 / L.band) * depth * L.alpha;
+          ctx.globalAlpha = 0.16 * Math.min(1, 40 / L.band) * depth * vis * L.glow * (1 - L.light);
           const s = L.band * 1.6;
           ctx.drawImage(pick(r, [GLOW_SPRITES[0], GLOW_SPRITES[1], GLOW_SPRITES[7]]), p.x - s / 2, p.y - s / 2, s, s);
           ctx.globalCompositeOperation = "source-over";
@@ -150,136 +190,170 @@
         for (let j = 0; j < n; j++) {
           if (r() < 0.25) continue;
           const o = (j / (n - 1) - 0.5) * L.band;
-          drawGlyph(inkSet, r, p.x + nx * o, p.y + ny * o, depth * L.alpha * (light ? 0.8 : 0.85));
+          drawGlyph(r, p.x + nx * o, p.y + ny * o, depth * vis * 0.85, L.light);
         }
       }
     }
   }
 
-  function drawRungs(L, phase, r, light, t) {
-    ctx.fillStyle = light ? "#4a4850" : "#dcdce6";
+  const inkColor = (light) => rgbToHex([0, 1, 2].map((j) => lerp([220, 220, 230][j], [74, 72, 80][j], light)));
+
+  function drawRungs(L, phase, t) {
+    const vis = Math.min(L.rungs, L.strands) * L.alpha;
+    if (vis < 0.01) return;
+    ctx.fillStyle = inkColor(L.light);
     ctx.font = "500 13px ui-monospace, Menlo, Consolas, monospace";
-    for (let y = 10; y < H; y += 22) {
+    for (let y = 10, idx = 0; y < H; y += 22, idx++) {
       const a = strandPoint(L, 0, y, phase), b = strandPoint(L, 1, y, phase);
       const depth = 0.5 + 0.5 * Math.abs(a.z - b.z) / 2;
-      ctx.globalAlpha = 0.75 * depth * L.alpha;
+      ctx.globalAlpha = 0.75 * depth * vis;
       const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
       for (let x = x0 + 10; x < x1 - 10; x += 7) ctx.fillRect(x, y - 1, 2.2, 2.2);
-      if (L.labels && x1 - x0 > 60) {
-        ctx.globalAlpha = 0.6 * L.alpha;
+      if (L.labels > 0.01 && x1 - x0 > 60) {
+        const r = rngFrom(idx * 977 + Math.floor(t * 6));
+        ctx.globalAlpha = 0.6 * vis * L.labels;
         ctx.textAlign = "right"; ctx.fillText(String(Math.floor(r() * 300)), x0 - 4, y + 4);
         ctx.textAlign = "left"; ctx.fillText(String(Math.floor(r() * 300)), x1 + 4, y + 4);
       }
     }
-    if (!L.labels) return;
+    if (L.labels < 0.01) return;
     // Running "Life / ID" readouts down one strand.
     ctx.textAlign = "right";
     ctx.font = "500 15px ui-monospace, Menlo, Consolas, monospace";
     for (let y = 30; y < H; y += 44) {
       const p = strandPoint(L, 0, y, phase);
       if (p.z < -0.2) continue;
-      ctx.globalAlpha = 0.7 * L.alpha;
+      ctx.globalAlpha = 0.7 * vis * L.labels;
       const life = (0.4 + 0.5 * Math.abs(Math.sin(y * 0.01 + t * 2))).toFixed(3);
       ctx.fillText(`Life:${life}`, p.x - 16, y);
       ctx.fillText(`ID: ${Math.floor(y / 44)}`, p.x - 16, y + 16);
     }
   }
 
-  // ---------- particles ----------
-  function drawBlob(x, y, size, sprites, r, a) {
-    ctx.globalAlpha = a;
-    ctx.drawImage(pick(r, sprites), x - size / 2, y - size / 2, size, size);
-  }
-  function drawBurst(x, y, size, r, a, light) {
-    const rays = 12 + Math.floor(r() * 20);
-    ctx.strokeStyle = light ? "#2a3550" : pick(r, ["#f2eeff", "#9fe6ff", "#f8c7e2"]);
-    ctx.fillStyle = ctx.strokeStyle;
-    ctx.lineWidth = 1.2;
-    ctx.globalAlpha = a * 0.75;
-    ctx.beginPath();
-    for (let i = 0; i < rays; i++) {
-      const ang = r() * Math.PI * 2, len = size * (0.3 + r() * 0.9);
-      ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
-    }
-    ctx.stroke();
-    for (let i = 0; i < rays / 2; i++) {
-      const ang = r() * Math.PI * 2, len = size * (0.4 + r() * 0.9);
-      ctx.fillRect(x + Math.cos(ang) * len, y + Math.sin(ang) * len, 2.5, 2.5);
-    }
-  }
-  function drawMolecule(x, y, size, r, a, light) {
-    const col = light ? pick(r, INK) : pick(r, ["#ffd56e", "#f6b9d8", "#f5f2ff", "#cbb8ff"]);
-    ctx.globalAlpha = a;
-    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 2;
-    const n = 3 + Math.floor(r() * 3);
-    for (let i = 0; i < n; i++) {
-      const ang = r() * Math.PI * 2, d = size * 0.55;
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(ang) * d, y + Math.sin(ang) * d); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x + Math.cos(ang) * d, y + Math.sin(ang) * d, size * (0.14 + r() * 0.1), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.beginPath(); ctx.arc(x, y, size * 0.32, 0, Math.PI * 2); ctx.fill();
-  }
-  function drawBox(x, y, size, r, a, light) {
-    ctx.globalAlpha = a;
-    ctx.drawImage(pick(r, BOX_TEX), x - size / 2, y - size / 2, size, size);
-    ctx.globalAlpha = Math.min(1, a + 0.2);
-    ctx.strokeStyle = light ? "#c79a1e" : "#4d7bff";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x - size / 2, y - size / 2, size, size);
-    if (light) { ctx.strokeStyle = "#ffd23a"; ctx.lineWidth = 3; ctx.strokeRect(x - size / 2 + 3, y - size / 2 + 3, size - 6, size - 6); }
-  }
-
-  function drawParticles(L, phase, seedR, frameR, light, local) {
-    const count = Math.round(L.particles * 80);
-    const boxCount = Math.round(L.boxes * 26);
-    const sprites = light ? INK_SPRITES : GLOW_SPRITES;
-    // Particles gather in clumps, the way the reference bunches its cells.
-    const anchors = Array.from({ length: L.scatter ? 16 : 9 }, () => [30 + seedR() * (W - 60), seedR() * H, seedR() < 0.5 ? 0 : 1]);
-    const pos = () => {
-      const [ax, ay, k] = pick(seedR, anchors);
-      const spread = L.scatter ? 46 : 70;
-      if (L.scatter || !L.strands) return { x: ax + (seedR() - 0.5) * spread * 2, y: ay + (seedR() - 0.5) * spread * 2, z: 1 };
-      const p = strandPoint(L, k, ay + (seedR() - 0.5) * spread * 2, phase);
-      const j = (seedR() - 0.5) * L.band * 1.4;
-      return { x: p.x + j, y: p.y + (seedR() - 0.5) * 14, z: p.z };
+  // ---------- particles: one fixed pool that glides between strands and open space ----------
+  const POOL = 190, BOX_POOL = 26;
+  const anchorR = rngFrom(4242);
+  const CLUSTERS = Array.from({ length: 16 }, () => [30 + anchorR() * (W - 60), anchorR() * H]);
+  const particles = Array.from({ length: POOL }, (_, i) => {
+    const r = rngFrom(7000 + i);
+    const c = CLUSTERS[i % CLUSTERS.length];
+    const rays = Array.from({ length: 12 + Math.floor(r() * 18) }, () => [r() * Math.PI * 2, 0.3 + r() * 0.9]);
+    const sats = Array.from({ length: 3 + Math.floor(r() * 3) }, () => [r() * Math.PI * 2, 0.14 + r() * 0.1]);
+    return {
+      kind: r(), size: 16 + r() * 44, k: r() < 0.5 ? 0 : 1, sy: r() * H, jx: r() - 0.5, jy: r() - 0.5,
+      fx: c[0] + (r() - 0.5) * 92, fy: c[1] + (r() - 0.5) * 92, drift: r() * 6.28,
+      glow: Math.floor(r() * GLOW_SPRITES.length), ink: Math.floor(r() * INK_SPRITES.length),
+      ray: Math.floor(r() * RAYS.length), mol: Math.floor(r() * MOLECULE.length), molInk: Math.floor(r() * INK.length),
+      rays, sats,
     };
-    if (!light) ctx.globalCompositeOperation = "lighter";
-    for (let i = 0; i < count; i++) {
-      const p = pos();
-      const kind = seedR();
-      const size = 16 + seedR() * 44;
-      const pulse = 0.85 + 0.3 * Math.sin(local * 9 + i);
-      const a = (0.4 + 0.6 * (p.z + 1) / 2) * L.alpha;
-      if (kind < 0.42) drawBlob(p.x, p.y, size * pulse, sprites, seedR, a * 0.9);
-      else if (kind < 0.75) { ctx.globalCompositeOperation = "source-over"; drawBurst(p.x, p.y, size * 1.1 * pulse, frameR, a, light); if (!light) ctx.globalCompositeOperation = "lighter"; }
-      else { ctx.globalCompositeOperation = "source-over"; drawMolecule(p.x, p.y, size * 0.7, seedR, a * 0.9, light); if (!light) ctx.globalCompositeOperation = "lighter"; }
+  });
+  const boxes = Array.from({ length: BOX_POOL }, (_, i) => {
+    const r = rngFrom(8800 + i);
+    const c = CLUSTERS[(i * 5) % CLUSTERS.length];
+    return { size: 18 + r() * 40, k: r() < 0.5 ? 0 : 1, sy: r() * H, jx: r() - 0.5, jy: 0, drift: r() * 6.28,
+      fx: c[0] + (r() - 0.5) * 120, fy: c[1] + (r() - 0.5) * 120, tex: Math.floor(r() * BOX_TEX.length) };
+  });
+
+  function placeOf(L, p, phase, t) {
+    const s = strandPoint(L, p.k, p.sy, phase);
+    const sx = s.x + p.jx * L.band * 1.4, sy = s.y + p.jy * 14;
+    const fx = p.fx + Math.sin(t * 0.8 + p.drift) * 6, fy = p.fy + Math.cos(t * 0.7 + p.drift) * 6;
+    const m = smooth(clamp01(L.scatter));
+    return { x: lerp(sx, fx, m), y: lerp(sy, fy, m), z: lerp(s.z, 1, m) };
+  }
+
+  function drawParticles(L, phase, t) {
+    const count = L.particles * 80;
+    const dark = 1 - L.light;
+    for (let i = 0; i < POOL && i < count + 1; i++) {
+      const p = particles[i];
+      const fade = clamp01(count - i);   // particles fade in and out one by one as the density changes
+      const q = placeOf(L, p, phase, t);
+      const a = (0.4 + 0.6 * (q.z + 1) / 2) * L.alpha * fade;
+      const pulse = 0.85 + 0.3 * Math.sin(t * 9 + i);
+      if (p.kind < 0.42) {
+        const size = p.size * 0.75 * pulse;
+        if (dark > 0) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = a * 0.9 * dark; ctx.drawImage(GLOW_SPRITES[p.glow], q.x - size / 2, q.y - size / 2, size, size); }
+        if (L.light > 0) { ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = a * 0.9 * L.light; ctx.drawImage(INK_SPRITES[p.ink], q.x - size / 2, q.y - size / 2, size, size); }
+        ctx.globalCompositeOperation = "source-over";
+      } else if (p.kind < 0.75) {
+        // Starburst sparkle.
+        const size = p.size * 1.1 * SPARKLE_SCALE * pulse;
+        const col = dark >= 0.5 ? RAYS[p.ray] : INK[0];
+        ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+        ctx.globalAlpha = a * 0.75;
+        ctx.beginPath();
+        const spin = t * 0.6;
+        for (const [ang, len] of p.rays) {
+          ctx.moveTo(q.x, q.y); ctx.lineTo(q.x + Math.cos(ang + spin) * len * size, q.y + Math.sin(ang + spin) * len * size);
+        }
+        ctx.stroke();
+        for (let j = 0; j < p.rays.length; j += 2) {
+          const [ang, len] = p.rays[j];
+          ctx.fillRect(q.x + Math.cos(ang + spin) * (len + 0.15) * size, q.y + Math.sin(ang + spin) * (len + 0.15) * size, 1.8, 1.8);
+        }
+      } else {
+        const size = p.size * 0.7;
+        ctx.fillStyle = ctx.strokeStyle = dark >= 0.5 ? MOLECULE[p.mol] : INK[p.molInk];
+        ctx.globalAlpha = a * 0.9; ctx.lineWidth = 2;
+        for (const [ang, rad] of p.sats) {
+          const sx = q.x + Math.cos(ang + t * 0.5) * size * 0.55, sy = q.y + Math.sin(ang + t * 0.5) * size * 0.55;
+          ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(sx, sy); ctx.stroke();
+          ctx.beginPath(); ctx.arc(sx, sy, size * rad, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.beginPath(); ctx.arc(q.x, q.y, size * 0.32, 0, Math.PI * 2); ctx.fill();
+      }
     }
-    ctx.globalCompositeOperation = "source-over";
-    for (let i = 0; i < boxCount; i++) {
-      const p = pos();
-      drawBox(p.x, p.y, 18 + seedR() * 40, seedR, (0.55 + 0.45 * (p.z + 1) / 2) * L.alpha, light);
+    const boxCount = L.boxes * 26;
+    for (let i = 0; i < BOX_POOL && i < boxCount + 1; i++) {
+      const b = boxes[i];
+      const q = placeOf(L, b, phase, t);
+      const fade = clamp01(boxCount - i);
+      const a = (0.55 + 0.45 * (q.z + 1) / 2) * L.alpha * fade;
+      ctx.globalAlpha = a;
+      ctx.drawImage(BOX_TEX[b.tex], q.x - b.size / 2, q.y - b.size / 2, b.size, b.size);
+      ctx.globalAlpha = Math.min(1, a + 0.2 * fade);
+      ctx.strokeStyle = L.light > 0.5 ? BOX_LINE_LIGHT : BOX_LINE;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(q.x - b.size / 2, q.y - b.size / 2, b.size, b.size);
     }
   }
 
-  // Scattered short rungs and glyph clusters for the looks without a helix.
-  function drawScatterRows(L, r, light) {
-    ctx.fillStyle = light ? "#4a4850" : "#dcdce6";
+  // Short dotted rows with numbers for the looks without a helix.
+  const ROWS = (() => {
+    const r = rngFrom(31337), out = [];
+    for (let y = 20; y < H; y += 30 + r() * 26) if (r() > 0.3) {
+      const x0 = 60 + r() * W * 0.4;
+      out.push([y, x0, Math.min(x0 + 80 + r() * W * 0.5, W - 60), Math.floor(r() * 300)]);
+    }
+    return out;
+  })();
+  function drawRows(L) {
+    const vis = L.rows * L.alpha;
+    if (vis < 0.01) return;
+    ctx.fillStyle = inkColor(L.light);
     ctx.font = "500 13px ui-monospace, Menlo, Consolas, monospace";
-    for (let y = 20; y < H; y += 30 + r() * 26) {
-      if (r() < 0.3) continue;
-      const x0 = 60 + r() * W * 0.4, x1 = x0 + 80 + r() * W * 0.5;
-      ctx.globalAlpha = 0.55 * L.alpha;
-      for (let x = x0; x < Math.min(x1, W - 60); x += 7) ctx.fillRect(x, y, 2.2, 2.2);
-      ctx.textAlign = "right"; ctx.fillText(String(Math.floor(r() * 300)), x0 - 4, y + 5);
+    ctx.textAlign = "right";
+    ctx.globalAlpha = 0.55 * vis;
+    for (const [y, x0, x1, num] of ROWS) {
+      for (let x = x0; x < x1; x += 7) ctx.fillRect(x, y, 2.2, 2.2);
+      ctx.fillText(String(num), x0 - 4, y + 5);
     }
   }
-  function drawGlyphField(L, r, inkSet) {
-    const clusters = 70;
-    for (let c = 0; c < clusters; c++) {
-      const cx = r() * W, cy = r() * H, cols = 2 + Math.floor(r() * 7), rows = 2 + Math.floor(r() * 6);
+
+  // Loose glyph clusters (the pale "field" looks).
+  const FIELD = (() => {
+    const r = rngFrom(555);
+    return Array.from({ length: 70 }, () => [r() * W, r() * H, 2 + Math.floor(r() * 7), 2 + Math.floor(r() * 6), Math.floor(r() * 1000)]);
+  })();
+  function drawField(L, t) {
+    if (L.field < 0.01) return;
+    const tick = Math.floor(t * 6);
+    for (const [cx, cy, cols, rows, seed] of FIELD) {
+      const r = rngFrom(seed + tick * 13);
       for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
         if (r() < 0.3) continue;
-        drawGlyph(inkSet, r, cx + i * 11, cy + j * 13, (0.5 + r() * 0.5) * (L.bg === "cream" ? 0.9 : L.alpha));
+        drawGlyph(r, cx + i * 11, cy + j * 13, (0.5 + r() * 0.5) * L.field * lerp(L.alpha, 0.9, L.light), L.light);
       }
     }
   }
@@ -288,39 +362,29 @@
   function drawScanlines(r, light) {
     ctx.globalAlpha = 1;
     for (let i = 0; i < 7; i++) {
-      ctx.fillStyle = light ? `rgba(40,40,60,${0.03 + r() * 0.06})` : `rgba(200,210,255,${0.04 + r() * 0.16})`;
-      ctx.fillRect(0, Math.floor(r() * H), W, 1 + Math.floor(r() * 2));
+      ctx.fillStyle = light > 0.5 ? `rgba(40,40,60,${0.03 + r() * 0.05})` : `rgba(200,210,255,${0.03 + r() * 0.1})`;
+      ctx.fillRect(0, Math.floor(r() * H), W, 1);
     }
   }
 
   // ---------- one frame ----------
   function render(t) {
     t = ((t % LENGTH) + LENGTH) % LENGTH;
-    let ci = 0;
-    while (ci + 1 < CUTS.length && CUTS[ci + 1][0] <= t) ci++;
-    const L = Object.assign({}, BASE, LOOK[CUTS[ci][1]]);
-    const local = t - CUTS[ci][0];
-    const frame = Math.floor(t * FPS);
-    const light = L.bg === "cream" || L.bg === "light";
-    const inkSet = light ? GLYPH.dark : GLYPH.light;
-    const phase = t * L.speed + ci * 0.7;
+    const L = lookAt(t);
+    const phase = (t / LENGTH) * Math.PI * 2 * 2;   // two full twists per loop, so the end meets the start
 
     ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = BG[L.bg];
+    ctx.fillStyle = rgbToHex(L.bgRgb);
     ctx.fillRect(0, 0, W, H);
 
-    const frameR = rngFrom(frame * 7919 + 13);
-    if (L.glyphField) drawGlyphField(L, rngFrom(ci * 31 + Math.floor(frame / 3)), inkSet);
-    if (L.scatter && !L.glyphField) drawScatterRows(L, rngFrom(ci * 131 + 7), light);
-    if (!L.scatter && L.strands) {
-      if (L.rungs) drawRungs(L, phase, frameR, light, t);
-      drawStrands(L, phase, rngFrom(ci * 17 + frame), inkSet, light);
-    }
-    if (!L.strands) drawScatterRows(L, rngFrom(ci * 131 + 7), light);
-    if (L.particles > 0 || L.boxes > 0) drawParticles(L, phase, rngFrom(ci * 977 + 3), frameR, light, local);
-    drawScanlines(frameR, light);
+    drawField(L, t);
+    drawRows(L);
+    drawRungs(L, phase, t);
+    drawStrands(L, phase, t);
+    drawParticles(L, phase, t);
+    drawScanlines(rngFrom(Math.floor(t * FPS) * 7919 + 13), L.light);
     ctx.globalAlpha = 1;
   }
 
