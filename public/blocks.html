@@ -5,16 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sairyu Blocks</title>
 <style>
-  /* Layout: one full-bleed canvas board; tiles on a square grid slide back and forth */
+  /* Layout: one compact canvas board centered on a dark surround; tiles on a square grid slide back and forth */
   :root {
+    --surround: #1c1c22;
     --orange: #e3873a;
     --navy: #3536b0;
     --white: #ececf3;
     color-scheme: light;
   }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--orange); overflow: hidden; }
-  canvas { display: block; width: 100%; height: 100%; }
+  body { background: var(--surround); overflow: hidden; display: grid; place-items: center; }
+  canvas { display: block; }
 </style>
 </head>
 <body>
@@ -28,9 +29,11 @@
   const NAVY = css.getPropertyValue("--navy").trim();
   const WHITE = css.getPropertyValue("--white").trim();
 
-  const TARGET_CELLS = 9;        // cells across the shorter side of the screen
+  const COLS = 7, ROWS = 6;      // board size in cells
+  const MAX_BOARD = 520;         // board width cap in px
+  const GUTTER = 16;             // space kept around the board
   const SHADOW_LENGTH = 0.5;     // shadow length in cells
-  const MOVE_TIME = 0.7;         // seconds for one slide
+  const MOVE_TIME = 0.4;         // seconds for one slide
   const MOVER_RATIO = 0.55;      // share of tiles that travel
 
   const canvas = document.getElementById("board");
@@ -131,7 +134,7 @@
         for (let k = 1; k <= steps; k++) reserved.add((t.r + dr * k) * cols + (t.c + dc * k));
         t.tc = t.c + dc * steps; t.tr = t.r + dr * steps;
         t.mover = true;
-        t.period = rand(3.2, 5.2);             // full out-and-back cycle
+        t.period = rand(1.8, 3.0);             // full out-and-back cycle
         t.offset = rand(0, t.period);
         t.moveTime = MOVE_TIME * (0.8 + steps * 0.35);
         break;
@@ -152,12 +155,15 @@
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth, h = window.innerHeight;
+    cols = COLS; rows = ROWS;
+    const availW = Math.min(window.innerWidth - GUTTER * 2, MAX_BOARD);
+    const availH = window.innerHeight - GUTTER * 2;
+    cell = Math.floor(Math.min(availW / cols, availH / rows));
+    const w = cell * cols, h = cell * rows;
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
-    cell = Math.min(w, h) / TARGET_CELLS;
-    cols = Math.ceil(w / cell);
-    rows = Math.ceil(h / cell);
     buildLayout();
   }
 
