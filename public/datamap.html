@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sairyu Data Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: one full-bleed canvas; a drifting node network over a faint grid, HUD readouts in the four corners */
+  :root {
+    --bg: #1a1a1c;
+    --grid: rgba(255, 255, 255, 0.045);
+    --line: rgba(255, 255, 255, 0.16);
+    --node: #e9e9ec;
+    --amber: #e4a94e;
+    --amber-line: rgba(228, 169, 78, 0.55);
+    --hud: #f1f1f3;
+    --font: "Outfit", "Helvetica Neue", Arial, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<canvas id="map" role="img" aria-label="점과 선으로 이어진 데이터 지도가 움직이며 좌표, 정확도, 문맥 수치가 계속 바뀌는 애니메이션"></canvas>
+
+<script>
+(() => {
+  const css = getComputedStyle(document.documentElement);
+  const C = (name) => css.getPropertyValue(name).trim();
+  const COLORS = {
+    bg: C("--bg"), grid: C("--grid"), line: C("--line"), node: C("--node"),
+    amber: C("--amber"), amberLine: C("--amber-line"), hud: C("--hud"),
+  };
+  const FONT = C("--font");
+
+  const SPACE_W = 1100, SPACE_H = 720;  // coordinate space the readouts are printed in
+  const GRID_STEP = 44;                 // px between faint grid lines
+  const STAT_INTERVAL = 0.22;           // seconds between HUD readout changes
+
+  const canvas = document.getElementById("map");
+  const ctx = canvas.getContext("2d");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ---------- nodes ----------
+  const CITIES = [
+    ["Sydney", 175, 62], ["London", 265, 93], ["Dubai", 470, 185], ["Paris", 963, 174],
+    ["Toronto", 1033, 430], ["Tokyo", 585, 395], ["Berlin", 690, 560],
+    ["Seoul", 285, 626], ["New York", 95, 655], ["Shanghai", 426, 700],
+  ];
+  const POINTS = [
+    [390, 154], [330, 240], [210, 255], [140, 330], [228, 331], [520, 230], [610, 255],
+    [705, 297], [749, 338], [470, 300], [410, 400], [300, 395], [775, 450], [649, 487],
+    [504, 493], [560, 545], [146, 482], [315, 520], [460, 590], [820, 640], [880, 300], [990, 560],
+  ];
+
+  const nodes = [
+    ...CITIES.map(([name, x, y]) => ({ name, hx: x, hy: y, city: true })),
+    ...POINTS.map(([x, y]) => ({ name: "", hx: x, hy: y, city: false })),
+  ];
+  // Each node drifts on two layered sine waves per axis, so its path never visibly repeats.
+  for (const n of nodes) {
+    n.w = [rand(0.25, 0.6), rand(0.25, 0.6), rand(0.6, 1.1), rand(0.6, 1.1)];
+    n.p = [rand(0, 6.3), rand(0, 6.3), rand(0, 6.3), rand(0, 6.3)];
+    n.a = [rand(18, 38), rand(14, 30), rand(4, 10), rand(4, 10)];
+    n.x = n.hx; n.y = n.hy;
+  }
+
+  const byName = (name) => nodes.findIndex((n) => n.name === name);
+  const AMBER_EDGES = [
+    ["Sydney", "London"], ["Paris", "Toronto"], ["Seoul", "New York"],
+    ["Seoul", "Shanghai"], ["London", "Dubai"], ["Tokyo", "Berlin"],
+  ].map(([a, b]) => [byName(a), byName(b)]);
+
+  // Thin white web: every node links to its two nearest neighbours, plus a few long spans.
+  const edgeKey = (a, b) => (a < b ? a + "-" + b : b + "-" + a);
+  const edges = new Map();
+  AMBER_EDGES.forEach(([a, b]) => edges.set(edgeKey(a, b), { a, b, amber: true }));
+  nodes.forEach((n, i) => {
+    nodes
+      .map((m, j) => ({ j, d: Math.hypot(m.hx - n.hx, m.hy - n.hy) }))
+      .filter((o) => o.j !== i)
+      .sort((u, v) => u.d - v.d)
+      .slice(0, 2)
+      .forEach(({ j }) => { if (!edges.has(edgeKey(i, j))) edges.set(edgeKey(i, j), { a: i, b: j, amber: false }); });
+  });
+  [["Paris", 7], ["Dubai", 13], ["Tokyo", 19], ["Berlin", 12], ["London", 0]].forEach(([name, k]) => {
+    const a = byName(name), b = CITIES.length + k;
+    if (!edges.has(edgeKey(a, b))) edges.set(edgeKey(a, b), { a, b, amber: false });
+  });
+  const edgeList = [...edges.values()];
+
+  // ---------- HUD readouts ----------
+  const stats = { tokens: 1332, temp: 0.73, context: 133, accuracy: 97.5 };
+  let lastStat = 0;
+  function stepStats() {
+    stats.tokens = Math.round(clamp(stats.tokens + rand(-60, 60), 980, 1420));
+    stats.temp = clamp(stats.temp + rand(-0.04, 0.04), 0.68, 0.94);
+    stats.context = Math.round(clamp(stats.context + rand(-3, 3), 118, 138));
+    stats.accuracy = clamp(stats.accuracy + rand(-0.4, 0.4), 96.0, 99.4);
+  }
+
+  // ---------- layout ----------
+  let w = 0, h = 0, dpr = 1, pad = 0, scale = 1;
+  const toScreen = (x, y) => [pad + (x / SPACE_W) * (w - pad * 2), pad + (y / SPACE_H) * (h - pad * 2)];
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = window.innerWidth; h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    scale = clamp(Math.min(w, h) / 760, 0.62, 1.35);
+    pad = Math.max(56, Math.min(w, h) * 0.09);
+  }
+
+  function drawGrid() {
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = (w % GRID_STEP) / 2; x < w; x += GRID_STEP) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, h); }
+    for (let y = (h % GRID_STEP) / 2; y < h; y += GRID_STEP) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(w, Math.round(y) + 0.5); }
+    ctx.stroke();
+  }
+
+  function drawHud() {
+    const m = Math.max(18, 26 * scale);
+    ctx.fillStyle = COLORS.hud;
+    ctx.font = `600 ${Math.round(15 * scale)}px ${FONT}`;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.fillText(`TOKENS: ${stats.tokens.toLocaleString("en-US")}`, m, m + 14 * scale);
+    ctx.fillText(`CONTEXT: ${stats.context}K`, m, h - m);
+    ctx.textAlign = "right";
+    ctx.fillText(`TEMP: ${stats.temp.toFixed(2)}`, w - m, m + 14 * scale);
+    ctx.fillText(`ACCURACY: ${stats.accuracy.toFixed(1)}%`, w - m, h - m);
+  }
+
+  function frame(now) {
+    const t = now / 1000;
+
+    for (const n of nodes) {
+      const x = n.hx + n.a[0] * Math.sin(t * n.w[0] + n.p[0]) + n.a[2] * Math.sin(t * n.w[2] + n.p[2]);
+      const y = n.hy + n.a[1] * Math.sin(t * n.w[1] + n.p[1]) + n.a[3] * Math.sin(t * n.w[3] + n.p[3]);
+      n.x = clamp(x, 0, SPACE_W); n.y = clamp(y, 0, SPACE_H);
+      [n.sx, n.sy] = toScreen(n.x, n.y);
+    }
+    if (t - lastStat > STAT_INTERVAL) { stepStats(); lastStat = t; }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, w, h);
+    drawGrid();
+
+    // Lines first so nodes and labels sit on top.
+    ctx.lineWidth = 1;
+    for (const e of edgeList) {
+      const A = nodes[e.a], B = nodes[e.b];
+      ctx.strokeStyle = e.amber ? COLORS.amberLine : COLORS.line;
+      ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.stroke();
+    }
+
+    const small = Math.round(10.5 * scale), mid = Math.round(12.5 * scale);
+    ctx.textAlign = "left";
+    for (const n of nodes) {
+      const coords = `${Math.round(n.x)}, ${Math.round(n.y)}`;
+      if (n.city) {
+        ctx.fillStyle = COLORS.amber;
+        ctx.beginPath(); ctx.arc(n.sx, n.sy, 4.2 * scale, 0, Math.PI * 2); ctx.fill();
+        ctx.textBaseline = "alphabetic";
+        ctx.font = `500 ${small}px ${FONT}`;
+        ctx.fillText(n.name, n.sx + 2 * scale, n.sy - 7 * scale);
+        ctx.textBaseline = "middle";
+        ctx.font = `600 ${mid}px ${FONT}`;
+        ctx.fillText(coords, n.sx + 9 * scale, n.sy + 1);
+      } else {
+        const s = 5 * scale;
+        ctx.fillStyle = COLORS.node;
+        ctx.fillRect(n.sx - s / 2, n.sy - s / 2, s, s);
+        ctx.textBaseline = "middle";
+        ctx.font = `500 ${small}px ${FONT}`;
+        ctx.globalAlpha = 0.82;
+        ctx.fillText(coords, n.sx + 8 * scale, n.sy + 1);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    drawHud();
+    if (!reduceMotion) requestAnimationFrame(frame);
+  }
+
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { resize(); if (reduceMotion) frame(0); }, 120);
+  });
+
+  resize();
+  // Redraw once the web font arrives so the first frames never stick with the fallback.
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => requestAnimationFrame(frame));
+})();
+</script>
+</body>
+</html>
