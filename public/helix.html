@@ -12,7 +12,7 @@
   }
   html, body { height: 100%; margin: 0; }
   body { background: var(--page); display: grid; place-items: center; overflow: hidden; }
-  canvas { display: block; max-width: 100vw; max-height: 100vh; width: auto; height: 100vh; aspect-ratio: 1080 / 1776; }
+  canvas { display: block; touch-action: none; cursor: crosshair; max-width: 100vw; max-height: 100vh; width: auto; height: 100vh; aspect-ratio: 1080 / 1776; }
 </style>
 </head>
 <body>
@@ -160,9 +160,38 @@
     };
   }
 
+  // ---------- cursor cut: hovering opens a hole in the helix, pushing everything aside ----------
+  const CUT_RADIUS = 58;        // radius of the hole around the cursor (drawing units)
+  const cut = { x: 0, y: 0, on: false, amt: 0 };
+  const bent = [0, 0, 1];
+  // Returns [x, y, visibility] for a point, pushed out of the hole and faded inside it.
+  function bend(x, y) {
+    bent[0] = x; bent[1] = y; bent[2] = 1;
+    if (cut.amt < 0.01) return bent;
+    const dx = x - cut.x, dy = y - cut.y, d = Math.hypot(dx, dy) || 0.001, reach = CUT_RADIUS * 1.9;
+    if (d > reach) return bent;
+    const push = Math.pow(1 - d / reach, 2) * CUT_RADIUS * 1.1 * cut.amt;
+    bent[0] = x + (dx / d) * push; bent[1] = y + (dy / d) * push;
+    bent[2] = lerp(1, clamp01((d - CUT_RADIUS * 0.45) / (CUT_RADIUS * 0.35)), cut.amt);
+    return bent;
+  }
+  function dot(x, y, s) {
+    const b = bend(x, y);
+    if (b[2] > 0.5) ctx.fillRect(b[0], b[1], s, s);
+  }
+  function text(str, x, y, alpha) {
+    const b = bend(x, y);
+    if (b[2] < 0.05) return;
+    ctx.globalAlpha = alpha * b[2];
+    ctx.fillText(str, b[0], b[1]);
+  }
+
   // Glyphs in pale and dark ink at once, weighted by how light the background currently is.
   function drawGlyph(r, x, y, a, light) {
     const g = Math.floor(r() * GLYPHS.length);
+    const b = bend(x, y);
+    if (b[2] < 0.02) return;
+    x = b[0]; y = b[1]; a *= b[2];
     if (light < 1) { ctx.globalAlpha = a * (1 - light); ctx.drawImage(GLYPH.light[g], x - 8, y - 9, 16, 18); }
     if (light > 0) { ctx.globalAlpha = a * light; ctx.drawImage(GLYPH.dark[g], x - 8, y - 9, 16, 18); }
   }
@@ -208,12 +237,12 @@
       const depth = 0.5 + 0.5 * Math.abs(a.z - b.z) / 2;
       ctx.globalAlpha = 0.75 * depth * vis;
       const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
-      for (let x = x0 + 10; x < x1 - 10; x += 7) ctx.fillRect(x, y - 1, 2.2, 2.2);
+      for (let x = x0 + 10; x < x1 - 10; x += 7) dot(x, y - 1, 2.2);
       if (L.labels > 0.01 && x1 - x0 > 60) {
         const r = rngFrom(idx * 977 + Math.floor(t * 6));
-        ctx.globalAlpha = 0.6 * vis * L.labels;
-        ctx.textAlign = "right"; ctx.fillText(String(Math.floor(r() * 300)), x0 - 4, y + 4);
-        ctx.textAlign = "left"; ctx.fillText(String(Math.floor(r() * 300)), x1 + 4, y + 4);
+        ctx.textAlign = "right"; text(String(Math.floor(r() * 300)), x0 - 4, y + 4, 0.6 * vis * L.labels);
+        ctx.textAlign = "left"; text(String(Math.floor(r() * 300)), x1 + 4, y + 4, 0.6 * vis * L.labels);
+        ctx.globalAlpha = 0.75 * depth * vis;
       }
     }
     if (L.labels < 0.01) return;
@@ -223,10 +252,9 @@
     for (let y = 30; y < H; y += 44) {
       const p = strandPoint(L, 0, y, phase);
       if (p.z < -0.2) continue;
-      ctx.globalAlpha = 0.7 * vis * L.labels;
       const life = (0.4 + 0.5 * Math.abs(Math.sin(y * 0.01 + t * 2))).toFixed(3);
-      ctx.fillText(`Life:${life}`, p.x - 16, y);
-      ctx.fillText(`ID: ${Math.floor(y / 44)}`, p.x - 16, y + 16);
+      text(`Life:${life}`, p.x - 16, y, 0.7 * vis * L.labels);
+      text(`ID: ${Math.floor(y / 44)}`, p.x - 16, y + 16, 0.7 * vis * L.labels);
     }
   }
 
@@ -274,8 +302,10 @@
     for (let i = 0; i < POOL && i < count + 1; i++) {
       const p = sparkles[i];
       const fade = clamp01(count - i);   // sparkles fade in and out one by one as the density changes
-      const q = placeOf(L, p, phase, t);
-      const a = (0.4 + 0.6 * (q.z + 1) / 2) * L.alpha * fade;
+      const q0 = placeOf(L, p, phase, t), b = bend(q0.x, q0.y);
+      if (b[2] < 0.02) continue;
+      const q = { x: b[0], y: b[1], z: q0.z };
+      const a = (0.4 + 0.6 * (q.z + 1) / 2) * L.alpha * fade * b[2];
       const size = p.size * 1.1 * SPARKLE_SCALE * (0.85 + 0.3 * Math.sin(t * 9 + i));
       const col = L.light < 0.5 ? (p.blue ? RAY_BLUE : RAY_WHITE) : INK[0];
       ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
@@ -296,11 +326,12 @@
     const count = L.boxes * 26 * BOX_SHARE;
     for (let i = 0; i < BOX_POOL && i < count + 1; i++) {
       const b = boxes[i];
-      const q = placeOf(L, b, phase, t);
+      const q = placeOf(L, b, phase, t), m = bend(q.x, q.y);
+      if (m[2] < 0.02) continue;
       const fade = clamp01(count - i);
-      const a = (0.55 + 0.45 * (q.z + 1) / 2) * L.alpha * fade;
+      const a = (0.55 + 0.45 * (q.z + 1) / 2) * L.alpha * fade * m[2];
       ctx.globalAlpha = a;
-      ctx.drawImage(BOX_TEX[b.tex], q.x - b.w / 2, q.y - b.h / 2, b.w, b.h);
+      ctx.drawImage(BOX_TEX[b.tex], m[0] - b.w / 2, m[1] - b.h / 2, b.w, b.h);
     }
   }
 
@@ -319,10 +350,10 @@
     ctx.fillStyle = inkColor(L.light);
     ctx.font = "500 13px ui-monospace, Menlo, Consolas, monospace";
     ctx.textAlign = "right";
-    ctx.globalAlpha = 0.55 * vis;
     for (const [y, x0, x1, num] of ROWS) {
-      for (let x = x0; x < x1; x += 7) ctx.fillRect(x, y, 2.2, 2.2);
-      ctx.fillText(String(num), x0 - 4, y + 5);
+      ctx.globalAlpha = 0.55 * vis;
+      for (let x = x0; x < x1; x += 7) dot(x, y, 2.2);
+      text(String(num), x0 - 4, y + 5, 0.55 * vis);
     }
   }
 
@@ -367,9 +398,22 @@
   // Exposed for frame-by-frame video export.
   window.renderHelixFrame = (i) => render(i / FPS);
 
+  // Pointer position in drawing units; the hole eases open and heals shut.
+  function aim(e) {
+    const rect = canvas.getBoundingClientRect();
+    cut.x = ((e.clientX - rect.left) / rect.width) * W;
+    cut.y = ((e.clientY - rect.top) / rect.height) * H;
+    cut.on = true;
+  }
+  canvas.addEventListener("pointermove", aim);
+  canvas.addEventListener("pointerdown", aim);
+  canvas.addEventListener("pointerleave", () => { cut.on = false; });
+  canvas.addEventListener("pointercancel", () => { cut.on = false; });
+
   let start = null;
   function loop(now) {
     if (start === null) start = now;
+    cut.amt += ((cut.on ? 1 : 0) - cut.amt) * 0.14;
     render((now - start) / 1000);
     requestAnimationFrame(loop);
   }
