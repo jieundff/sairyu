@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sairyu Blocks</title>
+<style>
+  /* Layout: one full-bleed canvas board; tiles on a square grid slide back and forth */
+  :root {
+    --orange: #e3873a;
+    --navy: #3536b0;
+    --white: #ececf3;
+    color-scheme: light;
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--orange); overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<canvas id="board" aria-label="흰 블록이 남색 그림자를 드리우며 주황색 바닥 위를 왔다갔다 움직이는 애니메이션" role="img"></canvas>
+
+<script>
+(() => {
+  const css = getComputedStyle(document.documentElement);
+  const ORANGE = css.getPropertyValue("--orange").trim();
+  const NAVY = css.getPropertyValue("--navy").trim();
+  const WHITE = css.getPropertyValue("--white").trim();
+
+  const TARGET_CELLS = 9;        // cells across the shorter side of the screen
+  const SHADOW_LENGTH = 0.5;     // shadow length in cells
+  const MOVE_TIME = 0.7;         // seconds for one slide
+  const MOVER_RATIO = 0.55;      // share of tiles that travel
+
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let cell = 0, cols = 0, rows = 0, dpr = 1;
+  let tiles = [];
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  // ---------- shapes (all subpaths wound the same way so nonzero fill unions them) ----------
+  function addCircle(p, cx, cy, r) {
+    p.moveTo(cx + r, cy);
+    p.arc(cx, cy, r, 0, Math.PI * 2);
+  }
+  function addRect(p, x, y, w, h) {
+    p.moveTo(x, y); p.lineTo(x + w, y); p.lineTo(x + w, y + h); p.lineTo(x, y + h); p.closePath();
+  }
+  function addBar(p, cx, cy, len, thick, angle) {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const pts = [[-len / 2, -thick / 2], [len / 2, -thick / 2], [len / 2, thick / 2], [-len / 2, thick / 2]];
+    pts.forEach(([x, y], i) => {
+      const px = cx + x * c - y * s, py = cy + x * s + y * c;
+      i ? p.lineTo(px, py) : p.moveTo(px, py);
+    });
+    p.closePath();
+  }
+
+  const SHAPES = {
+    square(p, x, y, s) { addRect(p, x - 0.5, y - 0.5, s + 1, s + 1); },
+    circle(p, x, y, s) { addCircle(p, x + s / 2, y + s / 2, s / 2); },
+    flower(p, x, y, s) {
+      const cx = x + s / 2, cy = y + s / 2;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        addCircle(p, cx + Math.cos(a) * s * 0.3, cy + Math.sin(a) * s * 0.3, s * 0.17);
+      }
+      addCircle(p, cx, cy, s * 0.31);
+    },
+    clover(p, x, y, s) {
+      const cx = x + s / 2, cy = y + s / 2, o = s * 0.22, r = s * 0.2;
+      addCircle(p, cx - o, cy - o, r);
+      addCircle(p, cx + o, cy - o, r);
+      addCircle(p, cx + o, cy + o, r);
+      addCircle(p, cx - o, cy + o, r);
+      addCircle(p, cx, cy, s * 0.21);
+    },
+    star(p, x, y, s) {
+      const cx = x + s / 2, cy = y + s / 2;
+      for (let i = 0; i < 4; i++) addBar(p, cx, cy, s * 0.8, s * 0.085, (i * Math.PI) / 4);
+    },
+    dots(p, x, y, s) {
+      const step = s / 5, d = s * 0.085;
+      for (let i = 0; i < 5; i++)
+        for (let j = 0; j < 5; j++)
+          addRect(p, x + step * (i + 0.5) - d / 2, y + step * (j + 0.5) - d / 2, d, d);
+    },
+  };
+
+  // ---------- layout ----------
+  function buildLayout() {
+    const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+
+    // Big white blocks first: clusters of squares that read as merged slabs.
+    const slabCount = Math.round((cols * rows) / 14);
+    for (let n = 0; n < slabCount; n++) {
+      const w = pick([1, 1, 2, 2, 3]), h = pick([1, 2, 2, 3]);
+      const c0 = Math.floor(rand(0, cols - w + 1)), r0 = Math.floor(rand(0, rows - h + 1));
+      for (let r = r0; r < r0 + h; r++)
+        for (let c = c0; c < c0 + w; c++) grid[r][c] = "square";
+    }
+
+    // Fill the rest with the small motifs or leave the floor visible.
+    const fill = ["empty", "empty", "empty", "empty", "circle", "circle", "flower", "clover", "clover", "star", "star", "dots"];
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (!grid[r][c]) grid[r][c] = pick(fill);
+
+    const list = [];
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (grid[r][c] !== "empty") list.push({ kind: grid[r][c], c, r, tc: c, tr: r, mover: false });
+
+    // Each mover reserves a straight run of empty cells, so no two tiles ever collide.
+    const reserved = new Set();
+    const free = (c, r) => c >= 0 && r >= 0 && c < cols && r < rows && grid[r][c] === "empty" && !reserved.has(r * cols + c);
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const t of [...list].sort(() => Math.random() - 0.5)) {
+      if (Math.random() > MOVER_RATIO) continue;
+      for (const [dc, dr] of [...dirs].sort(() => Math.random() - 0.5)) {
+        let steps = 0;
+        while (steps < 2 && free(t.c + dc * (steps + 1), t.r + dr * (steps + 1))) steps++;
+        if (!steps) continue;
+        steps = Math.ceil(rand(0, steps));
+        for (let k = 1; k <= steps; k++) reserved.add((t.r + dr * k) * cols + (t.c + dc * k));
+        t.tc = t.c + dc * steps; t.tr = t.r + dr * steps;
+        t.mover = true;
+        t.period = rand(3.2, 5.2);             // full out-and-back cycle
+        t.offset = rand(0, t.period);
+        t.moveTime = MOVE_TIME * (0.8 + steps * 0.35);
+        break;
+      }
+    }
+    tiles = list;
+  }
+
+  // Phase within the cycle: rest at home, slide out, rest away, slide back.
+  function progress(t, time) {
+    if (!t.mover || reduceMotion) return 0;
+    const half = t.period / 2;
+    const ph = (time + t.offset) % t.period;
+    const local = ph % half;
+    const k = local < half - t.moveTime ? 0 : easeInOut((local - (half - t.moveTime)) / t.moveTime);
+    return ph < half ? k : 1 - k;
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    cell = Math.min(w, h) / TARGET_CELLS;
+    cols = Math.ceil(w / cell);
+    rows = Math.ceil(h / cell);
+    buildLayout();
+  }
+
+  function frame(now) {
+    const time = now / 1000;
+    const w = canvas.width / dpr, h = canvas.height / dpr;
+    // Center the grid so partial edge cells split evenly.
+    const ox = (w - cols * cell) / 2, oy = (h - rows * cell) / 2;
+
+    const path = new Path2D();
+    for (const t of tiles) {
+      const k = progress(t, time);
+      const x = ox + (t.c + (t.tc - t.c) * k) * cell;
+      const y = oy + (t.r + (t.tr - t.r) * k) * cell;
+      SHAPES[t.kind](path, x, y, cell);
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = ORANGE;
+    ctx.fillRect(0, 0, w, h);
+
+    // Long shadow: stamp the whole board toward the lower left.
+    ctx.fillStyle = NAVY;
+    const len = cell * SHADOW_LENGTH, step = 1.2;
+    for (let d = len; d > 0; d -= step) {
+      ctx.setTransform(dpr, 0, 0, dpr, -d * dpr, d * dpr);
+      ctx.fill(path);
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = WHITE;
+    ctx.fill(path);
+
+    if (!reduceMotion) requestAnimationFrame(frame);
+  }
+
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { resize(); if (reduceMotion) frame(0); }, 150);
+  });
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
