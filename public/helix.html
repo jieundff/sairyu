@@ -41,7 +41,6 @@
   const INK = ["#1d3550", "#b8396a", "#d4a238", "#2c6b5d", "#142033", "#7a4f9a"].map(muted);
   const RAY_WHITE = muted("#f2eeff"), RAY_BLUE = muted("#9fe6ff");
   const BLUE_SPARKLES = 0.17;   // share of sparkles drawn blue; the rest are white
-  const BOX_LINE = muted("#4d7bff"), BOX_LINE_LIGHT = muted("#c79a1e");
   const GLYPHS = "01+×·◦#=*%8o:x".split("");
 
   // ---------- seeded randomness ----------
@@ -78,7 +77,7 @@
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
   });
   const GLOW_SPRITES = GLOW.map(softDot);
-  // Blurry black-and-white thumbnails that sit inside the blue detection boxes.
+  // Blurry black-and-white thumbnails.
   const grey = (hex) => { const c = hexToRgb(hex), v = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]; return rgbToHex([v, v, v]); };
   const BOX_TEX = Array.from({ length: 8 }, (_, i) => {
     const r = rngFrom(900 + i);
@@ -102,7 +101,7 @@
     zig:          { turns: 4.6, amp: 0.33, band: 44, ribbon: 1, glow: 1, rungs: 0, particles: 0.6, boxes: 0.05 },
     wide:         { turns: 1.05, amp: 0.27, band: 150, ribbon: 1, glow: 1, rungs: 0, labels: 0, particles: 0.5, boxes: 0.1 },
     wideBoxes:    { turns: 1.05, amp: 0.27, band: 150, ribbon: 1, glow: 1, rungs: 0, labels: 0, particles: 0.4, boxes: 0.6 },
-    scatter:      { scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 2.2, boxes: 0.12 },
+    scatter:      { scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 1.0, boxes: 0.12 },
     scatterBox:   { scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 1.7, boxes: 0.5 },
     lightScatter: { bg: "light", scatter: 1, strands: 0, rows: 1, rungs: 0, labels: 0, particles: 1.3, boxes: 0 },
     lightHelix:   { bg: "light", turns: 1.05, amp: 0.3, band: 18, labels: 0, rungs: 0, particles: 1.0, boxes: 0 },
@@ -254,6 +253,12 @@
     return { size: 18 + r() * 40, k: r() < 0.5 ? 0 : 1, sy: r() * H, jx: r() - 0.5, jy: 0, drift: r() * 6.28,
       fx: c[0] + (r() - 0.5) * 120, fy: c[1] + (r() - 0.5) * 120, tex: Math.floor(r() * BOX_TEX.length) };
   });
+  // Landscape and portrait frames instead of squares, keeping roughly the same area.
+  const BOX_SHAPES = [1.7, 1.45, 1.25, 0.8, 0.65, 0.55];
+  boxes.forEach((b, i) => {
+    const ar = BOX_SHAPES[i % BOX_SHAPES.length];
+    b.w = b.size * Math.sqrt(ar); b.h = b.size / Math.sqrt(ar);
+  });
 
   function placeOf(L, p, phase, t) {
     const s = strandPoint(L, p.k, p.sy, phase);
@@ -295,11 +300,7 @@
       const fade = clamp01(count - i);
       const a = (0.55 + 0.45 * (q.z + 1) / 2) * L.alpha * fade;
       ctx.globalAlpha = a;
-      ctx.drawImage(BOX_TEX[b.tex], q.x - b.size / 2, q.y - b.size / 2, b.size, b.size);
-      ctx.globalAlpha = Math.min(1, a + 0.2 * fade);
-      ctx.strokeStyle = L.light > 0.5 ? BOX_LINE_LIGHT : BOX_LINE;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(q.x - b.size / 2, q.y - b.size / 2, b.size, b.size);
+      ctx.drawImage(BOX_TEX[b.tex], q.x - b.w / 2, q.y - b.h / 2, b.w, b.h);
     }
   }
 
