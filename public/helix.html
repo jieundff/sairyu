@@ -23,7 +23,6 @@
 (() => {
   const W = 540, H = 888, SCALE = 2, FPS = 30, LENGTH = 10;   // drawing space, pixel density (→ 1080×1776), frame rate, loop seconds
   const SATURATION = 0.78;      // colour patterns are pulled this far toward grey (1 = original colours)
-  const SPARKLE_SCALE = 0.5;    // size of the starburst sparkles
   const HOLD = 0.3;             // share of each stretch that holds a look before morphing into the next
   const canvas = document.getElementById("helix");
   const ctx = canvas.getContext("2d");
@@ -38,8 +37,6 @@
   const BG = { dark: "#07080b", cream: "#f2ece2", light: "#e4e4e8", navy: "#090b22" };
   const GLOW = ["#f6b9d8", "#cbb8ff", "#3fc8c8", "#2a9ea6", "#3b5cff", "#2b3fc0", "#ffd56e", "#f5f2ff"].map(muted);
   const INK = ["#1d3550", "#b8396a", "#d4a238", "#2c6b5d", "#142033", "#7a4f9a"].map(muted);
-  const MOLECULE = ["#ffd56e", "#f6b9d8", "#f5f2ff", "#cbb8ff"].map(muted);
-  const RAYS = ["#f2eeff", "#9fe6ff", "#f8c7e2"].map(muted);
   const BOX_LINE = muted("#4d7bff"), BOX_LINE_LIGHT = muted("#c79a1e");
   const GLYPHS = "01+×·◦#=*%8o:x".split("");
 
@@ -256,15 +253,11 @@
   const particles = Array.from({ length: POOL }, (_, i) => {
     const r = rngFrom(7000 + i);
     const c = CLUSTERS[i % CLUSTERS.length];
-    const rays = Array.from({ length: 12 + Math.floor(r() * 18) }, () => [r() * Math.PI * 2, 0.3 + r() * 0.9]);
-    const sats = Array.from({ length: 3 + Math.floor(r() * 3) }, () => [r() * Math.PI * 2, 0.14 + r() * 0.1]);
     return {
       kind: r(), size: 16 + r() * 44, k: r() < 0.5 ? 0 : 1, sy: r() * H, jx: r() - 0.5, jy: r() - 0.5,
       fx: c[0] + (r() - 0.5) * 92, fy: c[1] + (r() - 0.5) * 92, drift: r() * 6.28,
       glow: Math.floor(r() * GLOW_SPRITES.length), ink: Math.floor(r() * INK_SPRITES.length),
-      ray: Math.floor(r() * RAYS.length), mol: Math.floor(r() * MOLECULE.length), molInk: Math.floor(r() * INK.length),
       motif: Math.floor(r() * MOTIF_SRC.length), tilt: (r() - 0.5) * 0.5, motifOn: r() < MOTIF_SHARE,
-      rays, sats,
     };
   });
   const boxes = Array.from({ length: BOX_POOL }, (_, i) => {
@@ -291,7 +284,8 @@
       const q = placeOf(L, p, phase, t);
       const a = (0.4 + 0.6 * (q.z + 1) / 2) * L.alpha * fade;
       const pulse = 0.85 + 0.3 * Math.sin(t * 9 + i);
-      // Pink and yellow dots and the round molecules become ornament motifs.
+      // Pink and yellow dots and the round molecules become ornament motifs; the rest stay soft glow dots.
+      // (The 0.42–0.75 range used to be starburst sparkles, now left out.)
       const isMotif = p.kind >= 0.75 || (p.kind < 0.42 && (p.glow === 0 || p.glow === 6 || p.ink === 1 || p.ink === 2));
       if (isMotif) {
         const m = MOTIFS[p.motif % MOTIFS.length];
@@ -308,32 +302,6 @@
         if (dark > 0) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = a * 0.9 * dark; ctx.drawImage(GLOW_SPRITES[p.glow], q.x - size / 2, q.y - size / 2, size, size); }
         if (L.light > 0) { ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = a * 0.9 * L.light; ctx.drawImage(INK_SPRITES[p.ink], q.x - size / 2, q.y - size / 2, size, size); }
         ctx.globalCompositeOperation = "source-over";
-      } else if (p.kind < 0.75) {
-        // Starburst sparkle.
-        const size = p.size * 1.1 * SPARKLE_SCALE * pulse;
-        const col = dark >= 0.5 ? RAYS[p.ray] : INK[0];
-        ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
-        ctx.globalAlpha = a * 0.75;
-        ctx.beginPath();
-        const spin = t * 0.6;
-        for (const [ang, len] of p.rays) {
-          ctx.moveTo(q.x, q.y); ctx.lineTo(q.x + Math.cos(ang + spin) * len * size, q.y + Math.sin(ang + spin) * len * size);
-        }
-        ctx.stroke();
-        for (let j = 0; j < p.rays.length; j += 2) {
-          const [ang, len] = p.rays[j];
-          ctx.fillRect(q.x + Math.cos(ang + spin) * (len + 0.15) * size, q.y + Math.sin(ang + spin) * (len + 0.15) * size, 1.8, 1.8);
-        }
-      } else {
-        const size = p.size * 0.7;
-        ctx.fillStyle = ctx.strokeStyle = dark >= 0.5 ? MOLECULE[p.mol] : INK[p.molInk];
-        ctx.globalAlpha = a * 0.9; ctx.lineWidth = 2;
-        for (const [ang, rad] of p.sats) {
-          const sx = q.x + Math.cos(ang + t * 0.5) * size * 0.55, sy = q.y + Math.sin(ang + t * 0.5) * size * 0.55;
-          ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(sx, sy); ctx.stroke();
-          ctx.beginPath(); ctx.arc(sx, sy, size * rad, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.beginPath(); ctx.arc(q.x, q.y, size * 0.32, 0, Math.PI * 2); ctx.fill();
       }
     }
     const boxCount = L.boxes * 26;
