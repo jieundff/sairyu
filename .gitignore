@@ -27,3 +27,4 @@ dist-ssr
 
 ut-analysis/models/
 ut-analysis/out/
+ut-analysis/*.log
