@@ -24,3 +24,6 @@ dist-ssr
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+ut-analysis/models/
+ut-analysis/out/
