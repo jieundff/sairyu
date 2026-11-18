@@ -618,7 +618,8 @@
     track.style.transform = `translate3d(${-current}px,0,0)`;
     setActive(current);
     // rauno.me-style word slide: the word is coupled 1:1 to scroll distance (in card px),
-    // clamped at both ends, and follows that target through a spring (stiffness 500, damping 40).
+    // clamped at both ends, and follows that target through a heavy, slightly over-damped spring
+    // (stiffness 90, damping 20): the word trails the scroll and settles slowly instead of snapping.
     const now = performance.now();
     const dt = Math.min(0.032, (now - lastT) / 1000); lastT = now;
     brandCards.forEach(c => {
@@ -628,7 +629,7 @@
       const kR = Math.max(1, maxR / (0.9 * step)), kL = Math.max(1, maxL / (0.9 * step));
       const goal = d > 0 ? -Math.min(d * kR, maxR) : Math.min(-d * kL, maxL); // 0 = boxed thumbnail
       if (reduce) { c._x = goal; c._v = 0; }
-      else { c._v += (500 * (goal - c._x) - 40 * c._v) * dt; c._x += c._v * dt; }
+      else { c._v += (90 * (goal - c._x) - 20 * c._v) * dt; c._x += c._v * dt; }
       c._logo.style.transform = `translate3d(${c._x.toFixed(2)}px,0,0)`;
     });
     hint.style.opacity = current > 20 ? 0 : 1;
