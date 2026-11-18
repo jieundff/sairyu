@@ -18,7 +18,7 @@ KEYS = [
     ("P3", r"맑|햇살|햇볕|햇빛"),
     ("P4", r"더워|더위"),
     ("P5", r"도착|의자|소파|편안한 자세|편한 자세"),
-    ("P6", r"벗어|벗고"),
+    ("P6", r"벗어|벗고|일어나"),
 ]
 # 01은 탈의 프롬프트가 착석 전에 나오고(143.1s), 착석 뒤에는 탈의 지시가 없음 → P6만 P5 앞에서 탐색
 P6_BEFORE_P5 = {"01"}
@@ -34,7 +34,8 @@ for f in sorted((OUT / "transcripts").glob("*_transcript.json")):
         lo = prev
         if name == "P6" and pid in P6_BEFORE_P5:
             lo = starts[3]
-        hit = next((l for l in lines if l["start"] >= lo and re.search(pat, l["text"])), None)
+        hi = 40 if name == "P1" else 1e9          # P1 지시는 영상 초반에만 있음
+        hit = next((l for l in lines if lo <= l["start"] <= hi and re.search(pat, l["text"])), None)
         s = round(hit["start"], 1) if hit else (0.0 if name == "P1" else None)
         starts.append(s)
         dbg.append(f"{pid} {name} {s} {hit['text'] if hit else '— 못 찾음'}")

@@ -20,6 +20,8 @@ from mediapipe.tasks.python import BaseOptions, vision
 MODEL = str(Path(__file__).parent / "models" / "pose_landmarker_heavy.task")
 FPS = 10
 TORSO = [11, 12, 23, 24]
+# 촬영 중 카메라가 시계 방향 90° 돌아간 영상: (전환 시작 s, 전환 완료 s) — 01은 165.5–167s 프레임 육안 확인
+ROT_WINDOW = {"01": (166.0, 167.0)}
 
 
 def make():
@@ -36,6 +38,12 @@ def detect(lm, frame, ms):
     img = np.array([[p.x, p.y, p.z, p.visibility] for p in r.pose_landmarks[0]])
     world = np.array([[p.x, p.y, p.z] for p in r.pose_world_landmarks[0]])
     return img, world
+
+
+def upright(img, w, h):
+    sh = (img[11, :2] + img[12, :2]) / 2
+    hp = (img[23, :2] + img[24, :2]) / 2
+    return np.degrees(np.arctan2(abs((sh[0] - hp[0]) * w), -(sh[1] - hp[1]) * h))
 
 
 def run(vid: Path, out: Path):
@@ -55,10 +63,12 @@ def run(vid: Path, out: Path):
         if i >= nxt - 1e-6:
             ms = int(round(i / src_fps * 1000))
             best, rot = detect(lm, f, ms), 0
-            if landscape:
+            win = ROT_WINDOW.get(vid.stem)
+            sec = i / src_fps
+            if landscape and win and sec >= win[0]:
                 alt = detect(lm_rot, cv2.rotate(f, cv2.ROTATE_90_CLOCKWISE), ms)
-                score = lambda d: -1 if d is None else d[0][TORSO, 3].mean()
-                if score(alt) > score(best) + 0.1:
+                # 회전 전환 구간에서는 몸통이 영상 수직에 더 가까운 쪽, 전환 이후에는 회전본만 사용
+                if sec >= win[1] or (alt is not None and (best is None or upright(alt[0], h, w) < upright(best[0], w, h))):
                     best, rot = alt, 1
             ts.append(i / src_fps)
             rots.append(rot)

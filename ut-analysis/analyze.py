@@ -35,13 +35,6 @@ def angle(a, b, c):
     return np.degrees(np.arccos(np.clip(cos, -1, 1)))
 
 
-def side_mean(img, left, right):
-    """좌/우 값 중 visibility가 높은 쪽 우선, 둘 다 보이면 평균."""
-    vl, vr = img[:, 0], img[:, 1]
-    out = np.where(vl & vr, (left + right) / 2, np.where(vl, left, np.where(vr, right, (left + right) / 2)))
-    return out
-
-
 def frame_features(d):
     img, world = d["img"], d["world"]
     W, H = float(d["W"]), float(d["H"])
@@ -54,15 +47,23 @@ def frame_features(d):
     knee_r = angle(world[:, R_HIP], world[:, R_KN], world[:, R_AN])
     hip_l = angle(world[:, L_SH], world[:, L_HIP], world[:, L_KN])
     hip_r = angle(world[:, R_SH], world[:, R_HIP], world[:, R_KN])
-    leg_vis = np.stack([np.minimum(vis[:, L_KN], vis[:, L_HIP]) > VIS,
-                        np.minimum(vis[:, R_KN], vis[:, R_HIP]) > VIS], 1)
-    knee = side_mean(leg_vis, knee_l, knee_r)
-    hip = side_mean(leg_vis, hip_l, hip_r)
+    # 다리 랜드마크(엉덩이·무릎) visibility 합이 큰 쪽 한쪽 값을 사용 (기존 06–17 값과 오차 최소)
+    left_side = (vis[:, L_KN] + vis[:, L_HIP]) >= (vis[:, R_KN] + vis[:, R_HIP])
+    knee = np.where(left_side, knee_l, knee_r)
+    hip = np.where(left_side, hip_l, hip_r)
     # 몸통 기울기: 엉덩이 중점→어깨 중점 벡터와 영상 수직 사이 각도(픽셀 비율 보정)
     sh = (img[:, L_SH, :2] + img[:, R_SH, :2]) / 2
     hp = (img[:, L_HIP, :2] + img[:, R_HIP, :2]) / 2
     dx, dy = (sh[:, 0] - hp[:, 0]) * pw, (sh[:, 1] - hp[:, 1]) * ph
     tilt = np.degrees(np.arctan2(np.abs(dx), -dy))
+    # 거꾸로 검출된 프레임(몸통 기울기 >100°)은 오검출로 보고 미검출 처리
+    bad = tilt > 100
+    img = img.copy()
+    img[bad] = np.nan
+    world = world.copy()
+    world[bad] = np.nan
+    for a in (knee, hip, tilt):
+        a[bad] = np.nan
     # 손목 영역
     torso_len = (hp[:, 1] - sh[:, 1])
     sh_w = np.abs(img[:, L_SH, 0] - img[:, R_SH, 0]) * pw / ph   # 높이 단위로 환산
@@ -88,7 +89,7 @@ def frame_features(d):
         "shin": (wl(L_KN, L_AN) + wl(R_KN, R_AN)) / 2,
     }
     return dict(knee=knee, hip=hip, tilt=tilt, zl=zones[0], zr=zones[1],
-                hl=heights[0], hr=heights[1], lens=lens, missing=np.isnan(img[:, 0, 0]))
+                hl=heights[0], hr=heights[1], lens=lens, missing=np.isnan(img[:, 0, 0]), img=img)
 
 
 def classify(f):
@@ -136,7 +137,7 @@ def read_frame(pid, t, rot):
     return f
 
 
-def draw_cell(frame, lm, path):
+def draw_cell(frame, lm, path, cx_fallback=None):
     h, w = frame.shape[:2]
     pts = None if np.isnan(lm[0, 0]) else (lm[:, :2] * [w, h]).astype(int)
     if pts is not None:
@@ -152,7 +153,10 @@ def draw_cell(frame, lm, path):
     # 9:16 세로 크롭 (가로 영상은 인물 중심)
     tw = int(h * CELL_W / CELL_H)
     if tw < w:
-        cx = int(np.nanmean(pts[[11, 12, 23, 24], 0])) if pts is not None else w // 2
+        if pts is not None:
+            cx = int(np.nanmean(pts[[11, 12, 23, 24], 0]))
+        else:   # 미검출 프레임은 가장 가까운 검출 프레임의 인물 위치로 크롭
+            cx = int(cx_fallback * w) if cx_fallback is not None else w // 2
         x0 = int(np.clip(cx - tw // 2, 0, w - tw))
         frame = frame[:, x0:x0 + tw]
     cv2.imwrite(str(path), cv2.resize(frame, (CELL_W, CELL_H), interpolation=cv2.INTER_AREA),
@@ -199,6 +203,8 @@ def cumulative(codes):
 
 def main():
     segments = json.loads((OUT / "segments.json").read_text())
+    if len(sys.argv) > 3:
+        segments = {k: v for k, v in segments.items() if k in sys.argv[3:]}
     (OUT / "cells").mkdir(exist_ok=True)
     (OUT / "timelines").mkdir(exist_ok=True)
     results = {}
@@ -235,7 +241,10 @@ def main():
                 rot = int(d["rot"][i])
                 fr = read_frame(pid, t[i], rot)
                 name = f"{pid}_P{k + 1}_{t[i]:.1f}.jpg"
-                draw_cell(fr, d["img"][i], OUT / "cells" / name)
+                ok_idx = np.where(~np.isnan(f["img"][:, 11, 0]) & (d["rot"] == rot))[0]
+                j = ok_idx[np.argmin(np.abs(ok_idx - i))] if len(ok_idx) else None
+                cxf = None if j is None else float(np.nanmean(f["img"][j, [11, 12, 23, 24], 0]))
+                draw_cell(fr, f["img"][i], OUT / "cells" / name, cxf)
                 fmt = lambda v: "–" if np.isnan(v) else f"{v:.0f}°"
                 cards.append({
                     "img": name, "t": round(float(t[i]), 1), "code": codes[i],
@@ -250,7 +259,10 @@ def main():
                         "missing_ratio": round(float(f["missing"].mean()), 3),
                         "rot_ratio": round(float(d["rot"].mean()), 3)}
         print(pid, metrics, flush=True)
-    (OUT / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=1))
+    dst = OUT / "results.json"
+    prev = json.loads(dst.read_text()) if dst.exists() else {}
+    prev.update(results)
+    dst.write_text(json.dumps(prev, ensure_ascii=False, indent=1))
 
 
 if __name__ == "__main__":
