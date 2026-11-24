@@ -217,7 +217,8 @@
   .sph-item { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; will-change: transform, opacity;
     box-shadow: 0 .3cqw 1cqw rgba(0,0,0,.10); }
   .sph-item img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; user-select: none; }
-  .sph-item i { position: absolute; inset: 0; background: #c9cfd0; opacity: 0; }   /* silhouette used while vanishing */
+  .sph-item i { position: absolute; inset: 0; background: #7f8686; opacity: 0; }   /* silhouette used while vanishing */
+  .sph-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* ---------- fullscreen card ---------- */
   .track .card { cursor: zoom-in; }
@@ -282,7 +283,7 @@
       <section class="panel sphere" data-name="Gallery">
         <div class="label">Gallery</div>
         <div class="card w1870" id="sphere-card">
-          <div class="sph" id="sph"></div>
+          <div class="sph" id="sph"><canvas class="sph-bg" id="sph-bg" aria-hidden="true"></canvas></div>
         </div>
       </section>
 
@@ -573,8 +574,73 @@
   sphEl.addEventListener('pointerup', endDrag);
   sphEl.addEventListener('pointercancel', endDrag);
   sphEl.addEventListener('click', e => { if (moved) { e.stopPropagation(); moved = false; } }, true);   // a drag is not a click
+  // grayscale background field (WebGL): soft warping light, a centre shade, radial streaks while the sphere
+  // spins, and the V-shaped fold that opens up and darkens the page as the images vanish (as in the reference)
+  const bgCv = document.getElementById('sph-bg');
+  const gl = bgCv.getContext('webgl', { antialias: false, alpha: false, premultipliedAlpha: false });
+  let glU = null;
+  if (gl) {
+    const vs = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+    const fs = `precision mediump float;
+      uniform vec2 uRes; uniform float uT, uFold, uDark, uSpin; uniform vec2 uVel;
+      float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+        return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+      void main(){
+        vec2 p=(gl_FragCoord.xy-.5*uRes)/uRes.y;
+        // slow domain warp + a swirl around the centre driven by the drag velocity ("the screen bends")
+        vec2 w=vec2(n(p*1.6+uT*.06),n(p*1.6+vec2(4.7,1.3)-uT*.05))-.5;
+        float fall=exp(-dot(p,p)*2.5);
+        p+=w*.07+vec2(-p.y,p.x)*uSpin*.9*fall+uVel*.25*fall;
+        float r=length(p), a=atan(p.y,p.x);
+        float col=mix(.80,.68,smoothstep(.15,1.05,r));
+        col-=exp(-r*r*7.)*.11;                                 // centre shade (the red glow, in grey)
+        // radial streaks while spinning
+        col+=(n(vec2(a*9.,r*3.-uT*.4))-.5)*.10*min(1.,abs(uSpin)*25.+length(uVel)*12.)*fall;
+        // V fold: apex left of centre, two creases opening to the right
+        vec2 ap=vec2(-.08-.12*uFold,.03*sin(uT*.35));
+        vec2 q=p-ap; float qa=atan(q.y,q.x), qr=length(q);
+        float open=.42+.30*uFold;
+        float edge=abs(abs(qa)-open)*qr;
+        float ins=smoothstep(open+.05,open-.05,abs(qa));
+        float crease=exp(-edge*edge*900.)*smoothstep(0.,.04,qr);
+        float lit=smoothstep(.0,.35,-qa)*ins;                    // lower half of the wedge catches light
+        float shadowBand=exp(-edge*edge*260.)*smoothstep(0.,.05,qr);   // wide, soft dark band along the lower crease
+        col+=uFold*(-.09*ins*exp(-edge*6.) + (qa>0. ? .13*crease : -.15*shadowBand + .04*crease) + .04*lit);
+        col-=uFold*.07*smoothstep(.05,0.,q.x)*exp(-qr*3.);       // soft shadow behind the apex
+        // ending: the page sinks into a dark grey, the fold stays faintly visible
+        vec2 gq=p-ap+vec2(.16,0.);
+        float dark=col*.30+.05+exp(-dot(gq,gq)*4.)*.10;          // soft light pooled left of the apex
+        col=mix(col,dark,uDark);
+        col+=(h(gl_FragCoord.xy+uT)-.5)*.015;                   // fine grain
+        gl_FragColor=vec4(vec3(col),1.);
+      }`;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
+    if (gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      gl.useProgram(prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      glU = Object.fromEntries(['uRes', 'uT', 'uFold', 'uDark', 'uSpin', 'uVel'].map(k => [k, gl.getUniformLocation(prog, k)]));
+    }
+  }
+  function drawBg(fold, dark) {
+    if (!glU) return;
+    const dpr = Math.min(1.5, devicePixelRatio || 1);
+    const w = Math.round(sphCard.offsetWidth * dpr * 0.6), hh = Math.round(sphCard.offsetHeight * dpr * 0.6);   // soft field: 60% res
+    if (bgCv.width !== w || bgCv.height !== hh) { bgCv.width = w; bgCv.height = hh; gl.viewport(0, 0, w, hh); }
+    gl.uniform2f(glU.uRes, w, hh);
+    gl.uniform1f(glU.uT, performance.now() / 1000);
+    gl.uniform1f(glU.uFold, fold); gl.uniform1f(glU.uDark, dark);
+    gl.uniform1f(glU.uSpin, velY); gl.uniform2f(glU.uVel, velY * 4, -velX * 4);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
   let sphVanish = -1;
   function renderSphere(t) {
+    const rect = sphCard.getBoundingClientRect();
+    if (rect.right < 0 || rect.left > innerWidth) return;   // off screen: skip the work
     // inertia: keep rolling after release, slowly settle back to an idle drift
     R = mul(rotX(velX), mul(rotY(velY), R));
     if (!dragging) { velX *= 0.95; velY = velY * 0.95 + 0.0016 * 0.05; }
@@ -590,12 +656,19 @@
       const w = base * it.size * s * (1 - 0.6 * g), hgt = w * 9 / 16;
       const px = W / 2 + x * rad * s * (1 + 0.25 * g) - w / 2, py = H / 2 + y * rad * s * (1 + 0.25 * g) - hgt / 2;
       it.el.style.width = w.toFixed(1) + 'px'; it.el.style.height = hgt.toFixed(1) + 'px';
-      it.el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0) rotateY(${(-x * 18).toFixed(1)}deg) rotateX(${(y * 14).toFixed(1)}deg)`;
+      // motion warp: while rolling, each photo stretches along its own screen motion and softens a little
+      const mvx = px - (it.lx ?? px), mvy = py - (it.ly ?? py); it.lx = px; it.ly = py;
+      const sp = Math.min(1, Math.hypot(mvx, mvy) / (W * 0.012)), ang = Math.atan2(mvy, mvx) * 57.2958;
+      const warp = sp > 0.02 ? ` rotate(${ang.toFixed(1)}deg) scaleX(${(1 + 0.45 * sp).toFixed(3)}) scaleY(${(1 - 0.12 * sp).toFixed(3)}) rotate(${(-ang).toFixed(1)}deg)` : '';
+      it.el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)${warp} rotateY(${(-x * 18).toFixed(1)}deg) rotateX(${(y * 14).toFixed(1)}deg)`;
+      const bl = sp > 0.05 ? `blur(${(sp * 2.2).toFixed(2)}px)` : '';
+      if (it.bl !== bl) { it.el.style.filter = bl; it.bl = bl; }
       it.el.style.zIndex = String(Math.round((z + 1) * 100));
       it.el.style.opacity = ((0.45 + 0.55 * (z + 1) / 2) * (1 - g)).toFixed(3);
       if (v !== sphVanish) { it.sil.style.opacity = v.toFixed(3); it.el.style.boxShadow = v > 0.01 ? 'none' : ''; }
     });
     sphVanish = v;
+    drawBg(smooth(clamp01((t - 0.25) / 0.55)), smooth(clamp01((t - 0.72) / 0.28)));
   }
 
   function measure() {
