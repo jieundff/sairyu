@@ -572,7 +572,7 @@
     if (!dragging) return;
     const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
     if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-    const k = 1.3 / sphCard.offsetHeight;                 // heavier: a drag across the card ~ half a roll
+    const k = 0.85 / sphCard.offsetHeight;                // heavier: a drag across the card ~ a third of a roll
     tvX = -dy * k; tvY = dx * k;                          // target speed; the sphere eases toward it
   });
   const endDrag = () => { dragging = false; sphEl.classList.remove('drag'); };
@@ -655,8 +655,8 @@
     // inertia: keep rolling after release, slowly settle back to an idle drift
     R = mul(rotX(velX), mul(rotY(velY), R));
     // heavy, damped response: speed eases toward the drag (no jitter), then coasts down to a slow drift
-    if (dragging) { tvX *= 0.7; tvY *= 0.7; } else { tvX *= 0.9; tvY = tvY * 0.9 + 0.0009 * 0.1; }
-    velX += (tvX - velX) * 0.08; velY += (tvY - velY) * 0.08;
+    if (dragging) { tvX *= 0.7; tvY *= 0.7; } else { tvX *= 0.86; tvY = tvY * 0.86 + 0.0009 * 0.14; }
+    velX += (tvX - velX) * 0.05; velY += (tvY - velY) * 0.05;   // slower take-up, more friction
     const W = sphCard.offsetWidth, H = sphCard.offsetHeight;
     const v = smooth(clamp01(t / 0.3));                    // 0..1: photos tint into flat silhouettes
     const ex = smooth(clamp01((t - 0.15) / 0.85));         // the sphere swells toward the camera
