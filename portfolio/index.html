@@ -66,9 +66,15 @@
     font-size: 1.73cqw; letter-spacing: -0.06em;
   }
   .home-nav .who { display: flex; gap: 1.6cqw; }
-  /* Figma 'Home' 331:880: Home 1236 / About 1399 / Works 1571 / Contact 1738 on a 1920 frame (~80px gaps) */
-  .home-nav .links { display: flex; gap: 4.2cqw; }
-  .home-nav .links a:nth-child(2) { margin-right: .66cqw; }
+  /* Figma 'Home' 331:880 positions on a 1920 frame: Home 1236 / Works 1571 / Profile on Contact's spot 1738 */
+  .home-nav .links { position: absolute; left: -3.6cqw; top: 50%; width: 100cqw; height: 0; }
+  .home-nav .links a { position: absolute; top: 0; transform: translateY(-50%); white-space: nowrap; }
+  .home-nav .links a[data-view="home"] { left: 64.375cqw; }
+  .home-nav .links a[data-view="works"] { left: 81.823cqw; }
+  .home-nav .links a[data-view="profile"] { left: 90.501cqw; }
+  .home-nav .who-profile { display: none; }
+  #home-card.is-profile .home-nav .who span { display: none; }
+  #home-card.is-profile .home-nav .who .who-profile { display: inline; }
   .home-nav a { color: inherit; text-decoration: none; }
   .home-nav a:hover { text-decoration: underline; text-underline-offset: .2em; }
   .home-title {
@@ -154,7 +160,7 @@
   #home-card .view { position: absolute; inset: 0; transition: opacity .5s ease, visibility .5s; }
   #home-card .view-works { opacity: 0; visibility: hidden; }
   #home-card.is-works .view-works { opacity: 1; visibility: visible; }
-  #home-card.is-works .view-home { opacity: 0; visibility: hidden; }
+  #home-card.is-works .view-home, #home-card.is-profile .view-home { opacity: 0; visibility: hidden; }
   /* reader: the standing cover continues into the project pages, scrolled inside the card */
   .reader {
     position: absolute; inset: 10cqh 0 0 0; z-index: 2; overflow-y: auto; overscroll-behavior: contain;
@@ -264,12 +270,11 @@
         <div class="label" id="home-label">Home</div>
         <div class="card" id="home-card">
           <div class="home-nav">
-            <div class="who"><span>Jieun.Seo</span><span>|</span><span>UX Designer</span></div>
+            <div class="who"><span>Jieun.Seo</span><span>|</span><span>UX Designer</span><span class="who-profile">Profile</span></div>
             <div class="links">
               <a href="#home" data-view="home">Home</a>
-              <a href="#about" data-goto="last">About</a>
               <a href="#works" data-view="works">Works</a>
-              <a href="#contact" data-goto="last">Contact</a>
+              <a href="#profile" data-view="profile">Profile</a>
             </div>
           </div>
           <div class="view view-home"><h1 class="home-title">A Designer<br>Who Discovers Possibilities.</h1></div>
@@ -843,8 +848,9 @@
   function setView(v) {
     const works = v === 'works';
     homeCard.classList.toggle('is-works', works);
-    homeLabel.textContent = works ? 'Works' : 'Home';
-    homeCard.querySelectorAll('[data-view]').forEach(a => a.classList.toggle('cur', works && a.dataset.view === 'works'));
+    homeCard.classList.toggle('is-profile', v === 'profile');   // Profile: blank page, "Profile" on Jieun.Seo's spot
+    homeLabel.textContent = { works: 'Works', profile: 'Profile' }[v] || 'Home';
+    homeCard.querySelectorAll('[data-view]').forEach(a => a.classList.toggle('cur', v !== 'home' && a.dataset.view === v));
     if (!works) { reader.classList.remove('on'); booksEl.classList.remove('covered'); closing = false; openBook = -1; layoutBooks(); }
   }
   homeCard.querySelectorAll('[data-view]').forEach(a => a.addEventListener('click', e => {
