@@ -597,18 +597,22 @@
         col-=exp(-r*r*5.)*.035;                                 // soft centre shade (the red glow, in grey)
         // radial streaks while spinning
         col+=(n(vec2(a*9.,r*3.-uT*.4))-.5)*.045*min(1.,abs(uSpin)*25.+length(uVel)*12.)*fall;
-        // V fold: apex left of centre, two creases opening to the right
-        vec2 ap=vec2(.04-.10*uFold,.01*sin(uT*.35));
-        vec2 q=p-ap; float qa=atan(q.y,q.x), qr=length(q);
-        float open=.12+.70*uFold;                                 // the V opens wider as it grows
-        float reach=smoothstep(.0,.15,uFold)*(.25+1.6*uFold);     // and reaches further to the right
-        float edge=abs(abs(qa)-open)*qr;
-        float ins=smoothstep(open+.04,open-.04,abs(qa))*smoothstep(reach+.2,reach,qr);
-        // low contrast like the reference: broad soft creases, gentle shade around the apex, slightly lighter V
-        float crease=exp(-edge*edge*220.)*smoothstep(0.,.05,qr)*smoothstep(reach+.25,reach,qr);
-        float apexShade=exp(-dot(q+vec2(.10,0.),q+vec2(.10,0.))*3.5);
-        col-=uFold*.075*apexShade*(1.-.75*ins);                   // the darker cloud the V cuts into
-        col+=uFold*(.025*ins + .035*crease);                      // inside a touch lighter, soft light along the edges
+        // V fold, matched to the reference still (desaturated): relative to the white page the area outside the
+        // V sits ~5% darker with a soft darker cloud around the apex (~8%), the inside is ~2.5% darker,
+        // and a wide soft band along both creases comes back up to white; the apex is rounded, not pointed
+        vec2 ap=vec2(.03-.08*uFold,.01*sin(uT*.35));
+        vec2 q=p-ap;
+        float open=.18+.57*uFold;                                 // half-angle opens to ~43 degrees
+        float reach=smoothstep(.0,.15,uFold)*(.3+1.6*uFold);
+        float r0=.05;                                             // apex rounding (soft, not pointed)
+        float hyp=sqrt(r0*r0+pow(abs(q.y)/tan(open),2.))-r0;     // rounded V boundary (hyperbola)
+        float d=(q.x-hyp)*sin(open);                              // ~ signed distance, >0 inside the V
+        float far=smoothstep(reach+.3,reach,length(q));
+        float ins=smoothstep(-.025,.06,d)*far;
+        float crease=exp(-pow((d-.012)/.04,2.))*far*smoothstep(-.05,.05,q.x+.05);
+        float cloud=exp(-dot(q+vec2(.14,0.),q+vec2(.14,0.))*4.);
+        float fcol=mix(.95,.975,ins)+.025*crease-.08*cloud*(1.-ins);
+        col=mix(col,min(col,fcol+ (col-1.)),uFold);
         // ending: the page sinks into a dark grey, the fold stays faintly visible
         vec2 gq=p-ap+vec2(.16,0.);
         float dark=col*.30+.05+exp(-dot(gq,gq)*4.)*.10;          // soft light pooled left of the apex
