@@ -212,12 +212,12 @@
 
   /* ---------- Gallery: images floating on a sphere ---------- */
   .sph { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: pan-y;
-    background: radial-gradient(ellipse at 50% 50%, #ffffff 0%, #f6f6f6 70%, #efefef 100%); }
+    background: #ffffff; }
   .sph.drag { cursor: grabbing; }
   .sph-item { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; will-change: transform, opacity;
     box-shadow: 0 .3cqw 1cqw rgba(0,0,0,.10); }
   .sph-item img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; user-select: none; }
-  .sph-item i { position: absolute; inset: 0; background: #7f8686; opacity: 0; }   /* silhouette used while vanishing */
+  .sph-item i { position: absolute; inset: 0; background: #b4baba; opacity: 0; }   /* silhouette used while vanishing */
   .sph-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* ---------- fullscreen card ---------- */
@@ -593,10 +593,10 @@
         float fall=exp(-dot(p,p)*2.5);
         p+=w*.07+vec2(-p.y,p.x)*uSpin*.9*fall+uVel*.25*fall;
         float r=length(p), a=atan(p.y,p.x);
-        float col=mix(.80,.68,smoothstep(.15,1.05,r));
-        col-=exp(-r*r*7.)*.11;                                 // centre shade (the red glow, in grey)
+        float col=mix(1.,.965,smoothstep(.25,1.15,r));           // white field, faint edge falloff
+        col-=exp(-r*r*5.)*.035;                                 // soft centre shade (the red glow, in grey)
         // radial streaks while spinning
-        col+=(n(vec2(a*9.,r*3.-uT*.4))-.5)*.10*min(1.,abs(uSpin)*25.+length(uVel)*12.)*fall;
+        col+=(n(vec2(a*9.,r*3.-uT*.4))-.5)*.045*min(1.,abs(uSpin)*25.+length(uVel)*12.)*fall;
         // V fold: apex left of centre, two creases opening to the right
         vec2 ap=vec2(.04-.10*uFold,.01*sin(uT*.35));
         vec2 q=p-ap; float qa=atan(q.y,q.x), qr=length(q);
@@ -604,14 +604,17 @@
         float reach=smoothstep(.0,.15,uFold)*(.25+1.6*uFold);     // and reaches further to the right
         float edge=abs(abs(qa)-open)*qr;
         float ins=smoothstep(open+.04,open-.04,abs(qa))*smoothstep(reach+.2,reach,qr);
-        float crease=exp(-edge*edge*1400.)*smoothstep(0.,.03,qr)*smoothstep(reach+.25,reach,qr);
-        col+=uFold*(.11*ins + .15*crease);                        // lighter inside, bright crease edges
-        col-=uFold*.10*exp(-dot(q+vec2(.06,0.),q+vec2(.06,0.))*9.)*(1.-ins);   // shade gathers around the apex
+        // low contrast like the reference: broad soft creases, gentle shade around the apex, slightly lighter V
+        float crease=exp(-edge*edge*220.)*smoothstep(0.,.05,qr)*smoothstep(reach+.25,reach,qr);
+        float apexShade=exp(-dot(q+vec2(.10,0.),q+vec2(.10,0.))*3.5);
+        col-=uFold*.075*apexShade*(1.-.75*ins);                   // the darker cloud the V cuts into
+        col+=uFold*(.025*ins + .035*crease);                      // inside a touch lighter, soft light along the edges
         // ending: the page sinks into a dark grey, the fold stays faintly visible
         vec2 gq=p-ap+vec2(.16,0.);
         float dark=col*.30+.05+exp(-dot(gq,gq)*4.)*.10;          // soft light pooled left of the apex
         col=mix(col,dark,uDark);
-        col+=(h(gl_FragCoord.xy+uT)-.5)*.015;                   // fine grain
+        col=min(col,1.);
+        col+=(h(gl_FragCoord.xy+uT)-.5)*.010;                   // fine grain
         gl_FragColor=vec4(vec3(col),1.);
       }`;
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
