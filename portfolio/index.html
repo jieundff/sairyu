@@ -572,7 +572,7 @@
     if (!dragging) return;
     const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
     if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-    const k = 0.85 / sphCard.offsetHeight;                // heavier: a drag across the card ~ a third of a roll
+    const k = 1.05 / sphCard.offsetHeight;                // a drag across the card ~ 0.4 of a roll
     tvX = -dy * k; tvY = dx * k;                          // target speed; the sphere eases toward it
   });
   const endDrag = () => { dragging = false; sphEl.classList.remove('drag'); };
@@ -648,15 +648,19 @@
     gl.uniform1f(glU.uSpin, velY); gl.uniform2f(glU.uVel, velY * 4, -velX * 4);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
-  let sphVanish = -1;
-  function renderSphere(t) {
+  let sphVanish = -1, sphT = 0;
+  function renderSphere(tRaw) {
+    // scroll-driven exit is heavy: the progress trails the scroll and catches up slowly
+    sphT = reduce ? tRaw : sphT + (tRaw - sphT) * 0.045;
+    if (Math.abs(tRaw - sphT) < 0.0005) sphT = tRaw;
+    const t = sphT;
     const rect = sphCard.getBoundingClientRect();
     if (rect.right < 0 || rect.left > innerWidth) return;   // off screen: skip the work
     // inertia: keep rolling after release, slowly settle back to an idle drift
     R = mul(rotX(velX), mul(rotY(velY), R));
     // heavy, damped response: speed eases toward the drag (no jitter), then coasts down to a slow drift
-    if (dragging) { tvX *= 0.7; tvY *= 0.7; } else { tvX *= 0.86; tvY = tvY * 0.86 + 0.0009 * 0.14; }
-    velX += (tvX - velX) * 0.05; velY += (tvY - velY) * 0.05;   // slower take-up, more friction
+    if (dragging) { tvX *= 0.7; tvY *= 0.7; } else { tvX *= 0.88; tvY = tvY * 0.88 + 0.0009 * 0.12; }
+    velX += (tvX - velX) * 0.065; velY += (tvY - velY) * 0.065;
     const W = sphCard.offsetWidth, H = sphCard.offsetHeight;
     const v = smooth(clamp01(t / 0.3));                    // 0..1: photos tint into flat silhouettes
     const ex = smooth(clamp01((t - 0.15) / 0.85));         // the sphere swells toward the camera
@@ -689,7 +693,7 @@
     maxX = Math.max(0, track.scrollWidth - innerWidth);
     ZOOM_LEN = Math.round(innerHeight * 1.2);
     PIN_LEN = ZOOM_LEN + (N - 1) * STEP;
-    SPH_LEN = Math.round(innerHeight * 1.3);
+    SPH_LEN = Math.round(innerHeight * 1.9);             // more scroll needed to clear the gallery
     scroller.style.height = (maxX + PIN_LEN + SPH_LEN + innerHeight) + 'px';
     const pad = parseFloat(getComputedStyle(track).paddingLeft);
     offsets = panels.map(p => Math.min(maxX, Math.max(0, p.offsetLeft - pad - (innerWidth - 2 * pad - p.offsetWidth) / 2)));
