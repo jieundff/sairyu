@@ -598,16 +598,15 @@
         // radial streaks while spinning
         col+=(n(vec2(a*9.,r*3.-uT*.4))-.5)*.10*min(1.,abs(uSpin)*25.+length(uVel)*12.)*fall;
         // V fold: apex left of centre, two creases opening to the right
-        vec2 ap=vec2(-.08-.12*uFold,.03*sin(uT*.35));
+        vec2 ap=vec2(.04-.10*uFold,.01*sin(uT*.35));
         vec2 q=p-ap; float qa=atan(q.y,q.x), qr=length(q);
-        float open=.42+.30*uFold;
+        float open=.12+.70*uFold;                                 // the V opens wider as it grows
+        float reach=smoothstep(.0,.15,uFold)*(.25+1.6*uFold);     // and reaches further to the right
         float edge=abs(abs(qa)-open)*qr;
-        float ins=smoothstep(open+.05,open-.05,abs(qa));
-        float crease=exp(-edge*edge*900.)*smoothstep(0.,.04,qr);
-        float lit=smoothstep(.0,.35,-qa)*ins;                    // lower half of the wedge catches light
-        float shadowBand=exp(-edge*edge*260.)*smoothstep(0.,.05,qr);   // wide, soft dark band along the lower crease
-        col+=uFold*(-.09*ins*exp(-edge*6.) + (qa>0. ? .13*crease : -.15*shadowBand + .04*crease) + .04*lit);
-        col-=uFold*.07*smoothstep(.05,0.,q.x)*exp(-qr*3.);       // soft shadow behind the apex
+        float ins=smoothstep(open+.04,open-.04,abs(qa))*smoothstep(reach+.2,reach,qr);
+        float crease=exp(-edge*edge*1400.)*smoothstep(0.,.03,qr)*smoothstep(reach+.25,reach,qr);
+        col+=uFold*(.11*ins + .15*crease);                        // lighter inside, bright crease edges
+        col-=uFold*.10*exp(-dot(q+vec2(.06,0.),q+vec2(.06,0.))*9.)*(1.-ins);   // shade gathers around the apex
         // ending: the page sinks into a dark grey, the fold stays faintly visible
         vec2 gq=p-ap+vec2(.16,0.);
         float dark=col*.30+.05+exp(-dot(gq,gq)*4.)*.10;          // soft light pooled left of the apex
@@ -646,15 +645,17 @@
     if (!dragging) { velX *= 0.95; velY = velY * 0.95 + 0.0016 * 0.05; }
     else { velX *= 0.6; velY *= 0.6; }
     const W = sphCard.offsetWidth, H = sphCard.offsetHeight;
-    const rad = H * 0.36, cam = rad * 3.2, base = W * 0.07;
-    const v = smooth(clamp01(t / 0.45));                   // 0..1: photos turn into flat silhouettes
+    const v = smooth(clamp01(t / 0.3));                    // 0..1: photos tint into flat silhouettes
+    const ex = smooth(clamp01((t - 0.15) / 0.85));         // the sphere swells toward the camera
+    const fade = smooth(clamp01((t - 0.55) / 0.45));       // silhouettes thin out and disappear
+    const rad = H * 0.36 * (1 + 1.7 * ex), cam = H * 0.36 * 3.2, base = W * 0.07 * (1 + 1.1 * ex);
     sphItems.forEach(it => {
       const [x0, y0, z0] = it.p;
       const x = R[0] * x0 + R[1] * y0 + R[2] * z0, y = R[3] * x0 + R[4] * y0 + R[5] * z0, z = R[6] * x0 + R[7] * y0 + R[8] * z0;
-      const s = cam / (cam - z * rad);
-      const g = clamp01((t - 0.35 - it.delay * 0.35) / 0.3);   // staggered: each silhouette shrinks and fades
-      const w = base * it.size * s * (1 - 0.6 * g), hgt = w * 9 / 16;
-      const px = W / 2 + x * rad * s * (1 + 0.25 * g) - w / 2, py = H / 2 + y * rad * s * (1 + 0.25 * g) - hgt / 2;
+      const s = cam / Math.max(cam * 0.25, cam - z * rad * 0.9);
+      const g = clamp01(fade * 1.25 - it.delay * 0.25);      // slight per-item stagger in the fade
+      const w = base * it.size * s, hgt = w * 9 / 16;
+      const px = W / 2 + x * rad * s - w / 2, py = H / 2 + y * rad * s - hgt / 2;
       it.el.style.width = w.toFixed(1) + 'px'; it.el.style.height = hgt.toFixed(1) + 'px';
       // motion warp: while rolling, each photo stretches along its own screen motion and softens a little
       const mvx = px - (it.lx ?? px), mvy = py - (it.ly ?? py); it.lx = px; it.ly = py;
@@ -664,11 +665,11 @@
       const bl = sp > 0.05 ? `blur(${(sp * 2.2).toFixed(2)}px)` : '';
       if (it.bl !== bl) { it.el.style.filter = bl; it.bl = bl; }
       it.el.style.zIndex = String(Math.round((z + 1) * 100));
-      it.el.style.opacity = ((0.45 + 0.55 * (z + 1) / 2) * (1 - g)).toFixed(3);
+      it.el.style.opacity = ((0.45 + 0.55 * (z + 1) / 2) * (1 - 0.3 * v) * (1 - g)).toFixed(3);
       if (v !== sphVanish) { it.sil.style.opacity = v.toFixed(3); it.el.style.boxShadow = v > 0.01 ? 'none' : ''; }
     });
     sphVanish = v;
-    drawBg(smooth(clamp01((t - 0.25) / 0.55)), smooth(clamp01((t - 0.72) / 0.28)));
+    drawBg(smooth(clamp01((t - 0.35) / 0.65)), 0);
   }
 
   function measure() {
