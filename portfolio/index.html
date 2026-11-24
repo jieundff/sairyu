@@ -210,6 +210,25 @@
     font-size: 19.6cqw; font-weight: 700; letter-spacing: -0.05em; line-height: .8; white-space: nowrap;
   }
 
+  /* ---------- fullscreen card ---------- */
+  .track .card { cursor: zoom-in; }
+  .fs-overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; visibility: hidden; }
+  .fs-overlay.active { visibility: visible; }
+  .fs-overlay::before { content: ''; position: absolute; inset: 0; background: var(--bg); opacity: 0; transition: opacity .45s ease; }
+  .fs-overlay.open::before { opacity: 1; }
+  .fs-wrap { display: contents; }   /* carries the panel's class so its card styles keep applying */
+  .fs-overlay .card { position: relative; width: auto; height: min(100vh, calc(100vw / var(--ar))); aspect-ratio: var(--ar); cursor: auto; }
+  .fs-overlay .pager { position: absolute; left: 50%; bottom: 2.5vh; transform: translateX(-50%); margin: 0; z-index: 2; }
+  .fs-close {
+    position: absolute; top: 18px; right: 18px; z-index: 3; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(0,0,0,.06); display: grid; place-items: center; opacity: 0; transition: opacity .3s ease .2s;
+  }
+  .fs-overlay.open .fs-close { opacity: 1; }
+  .fs-close:hover { background: rgba(0,0,0,.12); }
+  .fs-close::before, .fs-close::after { content: ''; position: absolute; width: 16px; height: 1.5px; background: #111; }
+  .fs-close::before { transform: rotate(45deg); }
+  .fs-close::after { transform: rotate(-45deg); }
+
   .hint {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     font-size: 12px; color: var(--muted); transition: opacity .4s; z-index: 10;
@@ -406,6 +425,7 @@
     </div>
   </div>
 
+  <div class="fs-overlay" id="fs-overlay" aria-hidden="true"><button class="fs-close" id="fs-close" aria-label="전체화면 닫기"></button></div>
   <div class="hint" id="hint">Scroll →</div>
 
 <script>
@@ -604,10 +624,12 @@
   }
   function goTo(i) { scrollTo({ top: toScroll(i), behavior: reduce ? 'auto' : 'smooth' }); }
 
+  let activeIdx = 0;
   function setActive(x) {
     let best = 0, d = Infinity;
     offsets.forEach((o, i) => { const k = Math.abs(o - x); if (k < d) { d = k; best = i; } });
     dots.forEach((b, i) => { b.classList.toggle('on', i === best); b.setAttribute('aria-current', i === best ? 'true' : 'false'); });
+    activeIdx = best;
   }
 
   function tick() {
@@ -633,6 +655,7 @@
       c._logo.style.transform = `translate3d(${c._x.toFixed(2)}px,0,0)`;
     });
     hint.style.opacity = current > 20 ? 0 : 1;
+    if (fs && activeIdx !== fs.panelIdx) closeFs();     // scrolled on to another page: hand the card back
     requestAnimationFrame(tick);
   }
 
@@ -763,6 +786,68 @@
     if (e.key === 'Escape') closeBook();
   });
   layoutBooks();
+
+  // ---------- click a card -> it grows to fill the window (FLIP), Esc / X / scrolling away puts it back
+  const fsOverlay = document.getElementById('fs-overlay');
+  const fsClose = document.getElementById('fs-close');
+  let fs = null;
+  const INTERACTIVE = 'a, button, .book, .iso-hit, .reader, .arc-list li';
+  function flip(el, from, to, done) {
+    el.style.transformOrigin = '0 0';
+    el.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width})`;
+    el.getBoundingClientRect();
+    el.style.transition = reduce ? 'none' : 'transform .6s cubic-bezier(.65, 0, .25, 1)';
+    el.style.transform = '';
+    const end = () => { el.style.transition = ''; el.style.transformOrigin = ''; done && done(); };
+    if (reduce) end(); else setTimeout(end, 620);
+  }
+  function openFs(card) {
+    if (fs) return;
+    const panel = card.closest('.panel'), first = card.getBoundingClientRect();
+    const ph = document.createElement('div');
+    ph.style.cssText = `width:${first.width}px;height:${first.height}px;flex:none`;
+    card.before(ph);
+    const pager = panel.querySelector('.pager'), pph = pager && document.createElement('div');
+    if (pager) { pph.style.cssText = `height:${pager.offsetHeight}px;margin-top:${getComputedStyle(pager).marginTop}`; pager.before(pph); }
+    const wrap = document.createElement('div');
+    wrap.className = panel.className + ' fs-wrap';
+    fs = { card, ph, pager, pph, wrap, panelIdx: panels.indexOf(panel) };
+    fsOverlay.style.setProperty('--ar', (first.width / first.height).toFixed(5));
+    wrap.appendChild(card);
+    if (pager) wrap.appendChild(pager);
+    fsOverlay.insertBefore(wrap, fsClose);
+    fsOverlay.classList.add('active', 'open');
+    fsOverlay.setAttribute('aria-hidden', 'false');
+    flip(card, first, card.getBoundingClientRect());
+  }
+  function closeFs() {
+    if (!fs || fs.closing) return;
+    const f = fs; f.closing = true;
+    if (f.card === homeCard && openBook >= 0) {           // put a standing book back before the card shrinks
+      reader.classList.remove('on'); booksEl.classList.remove('covered'); closing = false; openBook = -1; layoutBooks();
+    }
+    const from = f.card.getBoundingClientRect(), to = f.ph.getBoundingClientRect();
+    fsOverlay.classList.remove('open');
+    f.card.style.transformOrigin = '0 0';
+    f.card.style.transition = reduce ? 'none' : 'transform .55s cubic-bezier(.65, 0, .25, 1)';
+    f.card.style.transform = `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${to.width / from.width})`;
+    setTimeout(() => {
+      f.card.style.transition = ''; f.card.style.transform = ''; f.card.style.transformOrigin = '';
+      f.ph.replaceWith(f.card);
+      if (f.pager) f.pph.replaceWith(f.pager);
+      f.wrap.remove();
+      fsOverlay.classList.remove('active');
+      fsOverlay.setAttribute('aria-hidden', 'true');
+      fs = null;
+    }, reduce ? 0 : 570);
+  }
+  track.querySelectorAll('.card').forEach(card => card.addEventListener('click', e => {
+    if (fs || e.target.closest(INTERACTIVE)) return;                       // menus, buttons, books keep working
+    if (card === homeCard && openBook >= 0) return;
+    openFs(card);
+  }));
+  fsClose.addEventListener('click', closeFs);
+  addEventListener('keydown', e => { if (e.key === 'Escape' && fs && openBook < 0) closeFs(); });
 
   addEventListener('resize', measure);
   addEventListener('load', measure);
