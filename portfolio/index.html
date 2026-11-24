@@ -593,8 +593,8 @@
         float fall=exp(-dot(p,p)*2.5);
         p+=w*.04+vec2(-p.y,p.x)*uSpin*.5*fall+uVel*.15*fall;
         float r=length(p), a=atan(p.y,p.x);
-        float col=mix(1.,.965,smoothstep(.25,1.15,r));           // white field, faint edge falloff
-        col-=exp(-r*r*5.)*.035;                                 // soft centre shade (the red glow, in grey)
+        float col=1.;                                           // pure #ffffff at rest
+        col-=exp(-r*r*5.)*.035*uFold;                           // soft centre shade only while the fold forms
         // radial streaks while spinning
         col+=(n(vec2(a*9.,r*3.-uT*.4))-.5)*.045*min(1.,abs(uSpin)*25.+length(uVel)*12.)*fall;
         // V fold, matched to the reference still (desaturated): relative to the white page the area outside the
@@ -618,7 +618,7 @@
         float dark=col*.30+.05+exp(-dot(gq,gq)*4.)*.10;          // soft light pooled left of the apex
         col=mix(col,dark,uDark);
         col=min(col,1.);
-        col+=(h(gl_FragCoord.xy+uT)-.5)*.010;                   // fine grain
+        col+=(h(gl_FragCoord.xy+uT)-.5)*.010*uFold;             // fine grain only while the fold forms
         gl_FragColor=vec4(vec3(col),1.);
       }`;
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
