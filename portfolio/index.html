@@ -811,9 +811,10 @@
   const sphCard = document.getElementById('archive-card');
   // globe button: the vertical stack turns into the floating sphere (and back)
   const globeBtn = document.getElementById('globe-btn');
-  let sphereOn = false, sphIn = 0;
+  let sphereOn = false, sphIn = 0, sphBase = 0;
   globeBtn.addEventListener('click', () => {
     sphereOn = !sphereOn;
+    sphBase = scrollY;                                   // scrolling on from here plays the exit graphics
     sphCard.classList.toggle('sphere-on', sphereOn);
     globeBtn.setAttribute('aria-pressed', String(sphereOn));
     globeBtn.setAttribute('aria-label', sphereOn ? '세로 나열로 보기' : '둥근 형태로 보기');
@@ -991,7 +992,15 @@
   function tick() {
     target = Math.min(maxX, toTrack(scrollY));
     renderArchive(scrollY);
-    if (sphereOn || sphIn > 0.01) renderSphere(0);
+    if (sphereOn || sphIn > 0.01) renderSphere(sphereOn ? clamp01((scrollY - sphBase) / (innerHeight * 1.9)) : 0);
+    // once the exit has played, carry on to the next page instead of scrolling through the hidden stack
+    if (sphereOn && scrollY - sphBase > innerHeight * 2.1) {
+      const end = pinStart(PIN) + PIN_LEN;
+      if (scrollY < end) scrollTo(0, end + 1);
+      sphereOn = false; sphIn = 0; sphT = 0;
+      sphCard.classList.remove('sphere-on');
+      globeBtn.setAttribute('aria-pressed', 'false'); globeBtn.setAttribute('aria-label', '둥근 형태로 보기');
+    }
     current = reduce ? target : current + (target - current) * 0.12;
     if (Math.abs(target - current) < 0.1) current = target;
     track.style.transform = `translate3d(${-current}px,0,0)`;
