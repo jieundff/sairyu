@@ -369,6 +369,10 @@
   const reduceM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = document.documentElement;
   root.style.overflow = 'hidden';
+  // always start on page 1: the browser would otherwise restore the last scroll position on reload
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  scrollTo(0, 0);
+  addEventListener('load', () => scrollTo(0, 0));
   const FONT = '"Courier New", ui-monospace, Menlo, monospace';
   const RAMP = " .`':,;-~^\"=+<>!*?|/\\()[]{}1iIl7tfjrJLYCXZUSOQD08GB&%#@";
   const NOISE = "%#@&8BGSDOQ0$?!*+=-:;.~^";
@@ -590,7 +594,7 @@
     t0 = performance.now();
   }
   function finish() {
-    done = true; intro.classList.add('gone'); root.style.overflow = '';
+    done = true; intro.classList.add('gone'); root.style.overflow = ''; scrollTo(0, 0);
     setTimeout(() => intro.remove(), 900);
   }
   // hover: the word CLICK is set into the ribbon at the cursor, as in the reference
@@ -928,7 +932,9 @@
   let sphVanish = -1, sphT = 0;
   function renderSphere(tRaw) {
     // scroll-driven exit is heavy: the progress trails the scroll and catches up slowly
-    sphT = reduce ? tRaw : sphT + (tRaw - sphT) * 0.045;
+    // same feel as the former Gallery page, but frame-rate independent (0.045 per 60fps frame)
+    const nowS = performance.now(), dtS = Math.min(0.05, (nowS - (renderSphere.last || nowS)) / 1000); renderSphere.last = nowS;
+    sphT = reduce ? tRaw : sphT + (tRaw - sphT) * (1 - Math.pow(1 - 0.045, dtS * 60));
     if (Math.abs(tRaw - sphT) < 0.0005) sphT = tRaw;
     const t = sphT;
     const rect = sphCard.getBoundingClientRect();
@@ -991,7 +997,7 @@
 
   function tick() {
     target = Math.min(maxX, toTrack(scrollY));
-    renderArchive(scrollY);
+    if (!(sphereOn && sphIn > 0.98)) renderArchive(scrollY);   // the hidden stack needs no work while the sphere is up
     if (sphereOn || sphIn > 0.01) renderSphere(sphereOn ? clamp01((scrollY - sphBase) / (innerHeight * 1.9)) : 0);
     // once the exit has played, carry on to the next page instead of scrolling through the hidden stack
     if (sphereOn && scrollY - sphBase > innerHeight * 2.1) {
