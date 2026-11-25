@@ -305,11 +305,11 @@
       <section class="panel works" data-name="Works">
         <div class="label" id="works-label">Device</div>
         <div class="card w1870" id="works-card">
-          <img class="shot on" data-key="device" src="img/device.webp" alt="RESONA, GRIPON, LUNDI, ZZAZAN 기기 모음">
-          <img class="shot" data-key="p1" src="img/p1.webp" alt="LUNDI 상세" loading="lazy">
-          <img class="shot" data-key="p2" src="img/p2.webp" alt="GRIPON 상세" loading="lazy">
-          <img class="shot" data-key="p3" src="img/p3.webp" alt="RESONA 상세" loading="lazy">
-          <img class="shot" data-key="p4" src="img/p4.webp" alt="ZZAZAN 상세" loading="lazy">
+          <img class="shot on" data-key="device" src="img/device.webp?v=1125b" alt="RESONA, GRIPON, LUNDI, ZZAZAN 기기 모음">
+          <img class="shot" data-key="p1" src="img/p1.webp?v=1125b" alt="LUNDI 상세" loading="lazy">
+          <img class="shot" data-key="p2" src="img/p2.webp?v=1125b" alt="GRIPON 상세" loading="lazy">
+          <img class="shot" data-key="p3" src="img/p3.webp?v=1125b" alt="RESONA 상세" loading="lazy">
+          <img class="shot" data-key="p4" src="img/p4.webp?v=1125b" alt="ZZAZAN 상세" loading="lazy">
           <div class="soon" data-key="p5">p5 — 준비 중</div>
         </div>
         <div class="pager" role="group" aria-label="포트폴리오 선택">
@@ -378,8 +378,8 @@
   const NOISE = "%#@&8BGSDOQ0$?!*+=-:;.~^";
   // column order: 1 Lundi (Slide 488), 2 Gripon (487), 3 Resona (483), 4-5 not made yet
   // one project at a time: 1 Lundi (488), 2 Gripon (487), 3 Resona (483), 4 Zza-zan (478)
-  const SRC = [{ src: 'img/intro/lundi.webp' }, { src: 'img/intro/gripon.webp' },
-               { src: 'img/intro/resona.webp' }, { src: 'img/intro/zzazan.webp' }];
+  const SRC = [{ src: 'img/intro/lundi.webp?v=1125b' }, { src: 'img/intro/gripon.webp?v=1125b' },
+               { src: 'img/intro/resona.webp?v=1125b' }, { src: 'img/intro/zzazan.webp?v=1125b' }];
   const SLOT = 1350, T0 = 500, BUILD = 560, HOLD = 240;
   const FILL = 500, WIPE = 850, SHARP = 750;            // finale: fill the screen, wipe down to page 1 in ASCII, sharpen
   const imgs = SRC.map(s => { if (!s) return null; const im = new Image(); im.src = s.src; return im; });
@@ -660,7 +660,7 @@
   // 50 portfolio pages as 16:9 boards. Resona = pages 1-9 (Figma "Page 9"); the rest are placeholders for now.
   const N = 50;
   const PAGES = Array.from({ length: N }, (_, i) =>
-    i < 9 ? { src: `img/resona/${String(i + 1).padStart(2, '0')}.webp`, project: 'Resona' } : { src: null, project: 'Not yet' });
+    i < 9 ? { src: `img/resona/${String(i + 1).padStart(2, '0')}.webp?v=1125b`, project: 'Resona' } : { src: null, project: 'Not yet' });
   const world = document.getElementById('iso-world');
   const floor = document.getElementById('iso-floor');   // floor labels live in their own layer, painted under every board
   const arcCard = document.getElementById('archive-card');
@@ -825,9 +825,9 @@
   });
   const sphEl = document.getElementById('sph');
   const SPH_SRC = [
-    'img/covers/resona.webp', 'img/covers/lundi.webp', 'img/covers/gripon.webp', 'img/covers/zzazan.webp',
-    ...Array.from({ length: 9 }, (_, i) => `img/resona/${String(i + 1).padStart(2, '0')}.webp`),
-    'img/device.webp', 'img/p1.webp', 'img/p2.webp', 'img/p3.webp', 'img/p4.webp',
+    'img/covers/resona.webp?v=1125b', 'img/covers/lundi.webp?v=1125b', 'img/covers/gripon.webp?v=1125b', 'img/covers/zzazan.webp?v=1125b',
+    ...Array.from({ length: 9 }, (_, i) => `img/resona/${String(i + 1).padStart(2, '0')}.webp?v=1125b`),
+    'img/device.webp?v=1125b', 'img/p1.webp?v=1125b', 'img/p2.webp?v=1125b', 'img/p3.webp?v=1125b', 'img/p4.webp?v=1125b',
   ];
   const SPH_N = 46;
   const rnd = (i, s) => { const x = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
@@ -1063,12 +1063,12 @@
 
   // ---------- Works page: five books seen edge-on; clicking a spine stands the book up to show its cover
   const BOOKS = [
-    { name: 'Lundi',   sub: '런디, 세탁소 운영의 디지털 표준',                 cover: 'img/covers/lundi.webp',  sp: '#ffffff', ink: '#1f4fd8', sp2: '#e6ecfb', light: true },
-    { name: 'Gripon',  sub: '클라이머를 위한 햅틱 그립',                       cover: 'img/covers/gripon.webp', sp: '#4f8b8f', ink: '#ffffff', sp2: '#3f7276' },
-    { name: 'Resona',  sub: '시각장애인 부모를 위한 실내용 아이 인지 디바이스', cover: 'img/covers/resona.webp', sp: '#e95039', ink: '#ffffff', sp2: '#c7412d',
+    { name: 'Lundi',   sub: '런디, 세탁소 운영의 디지털 표준',                 cover: 'img/covers/lundi.webp?v=1125b',  sp: '#ffffff', ink: '#1f4fd8', sp2: '#e6ecfb', light: true },
+    { name: 'Gripon',  sub: '클라이머를 위한 햅틱 그립',                       cover: 'img/covers/gripon.webp?v=1125b', sp: '#4f8b8f', ink: '#ffffff', sp2: '#3f7276' },
+    { name: 'Resona',  sub: '시각장애인 부모를 위한 실내용 아이 인지 디바이스', cover: 'img/covers/resona.webp?v=1125b', sp: '#e95039', ink: '#ffffff', sp2: '#c7412d',
       // page 01 repeats the cover, so the reader starts from page 02
-      pages: Array.from({ length: 8 }, (_, i) => `img/resona-full/${String(i + 2).padStart(2, '0')}.webp`) },
-    { name: 'Zza-zan', sub: '아이 사진을 태그로 쉽고 빠르게 찾고 공유해요',     cover: 'img/covers/zzazan.webp', sp: '#ffecea', ink: '#ff5f55', sp2: '#f7d9d6' },
+      pages: Array.from({ length: 8 }, (_, i) => `img/resona-full/${String(i + 2).padStart(2, '0')}.webp?v=1125b`) },
+    { name: 'Zza-zan', sub: '아이 사진을 태그로 쉽고 빠르게 찾고 공유해요',     cover: 'img/covers/zzazan.webp?v=1125b', sp: '#ffecea', ink: '#ff5f55', sp2: '#f7d9d6' },
     null,                                                                     // 5th project: not yet
   ];
   const homeCard = document.getElementById('home-card');
