@@ -226,6 +226,12 @@
   .sph-item i { position: absolute; inset: 0; background: #b4baba; opacity: 0; }   /* silhouette used while vanishing */
   .sph-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
+  /* ---------- landing intro (ASCII pixels) ---------- */
+  .intro { position: fixed; inset: 0; z-index: 100; background: #fff; cursor: pointer; transition: opacity .8s ease; }
+  .intro canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .intro.started { cursor: default; }
+  .intro.gone { opacity: 0; pointer-events: none; }
+
   /* ---------- fullscreen card ---------- */
   .track .card { cursor: zoom-in; }
   .fs-overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; visibility: hidden; }
@@ -260,6 +266,7 @@
 </style>
 </head>
 <body>
+  <div class="intro" id="intro" role="button" aria-label="클릭해서 포트폴리오 시작하기"><canvas aria-hidden="true"></canvas></div>
   <nav class="indicator" aria-label="패널 이동"></nav>
 
   <div class="scroller" id="scroller"></div>
@@ -342,6 +349,148 @@
   <div class="fs-overlay" id="fs-overlay" aria-hidden="true"><button class="fs-close" id="fs-close" aria-label="전체화면 닫기"></button></div>
   <div class="hint" id="hint">Scroll →</div>
 
+<script>
+// ---------- landing intro: an ASCII spiral, then (on click, ~7s) the project thumbnails are rebuilt column by
+// column out of characters, break apart and fall away, revealing the first page (after aino.agency)
+(() => {
+  const intro = document.getElementById('intro');
+  const cv = intro.querySelector('canvas'), ctx = cv.getContext('2d');
+  const reduceM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const root = document.documentElement;
+  root.style.overflow = 'hidden';
+  const FONT = '"Courier New", ui-monospace, Menlo, monospace';
+  const RAMP = " .`':,;-~^\"=+<>!*?|/\\()[]{}1iIl7tfjrJLYCXZUSOQD08GB&%#@";
+  const NOISE = "%#@&8BGSDOQ0$?!*+=-:;.~^";
+  // column order: 1 Lundi (Slide 488), 2 Gripon (487), 3 Resona (483), 4-5 not made yet
+  const SRC = [{ src: 'img/intro/lundi.webp', fx: .39, z: .5, fy: .52 }, { src: 'img/intro/gripon.webp', fx: .33 },
+               { src: 'img/intro/resona.webp', fx: .66 }, null, null];
+  const imgs = SRC.map(s => { if (!s) return null; const im = new Image(); im.src = s.src; return im; });
+  const R = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+  let W, H, CW, CH, COLS, ROWS, cells = [], t0 = 0, started = false, done = false;
+
+  function sample(im, fx, cw, ch, z = 1, fy = .5) {           // cover-fit the image into a cw x ch character grid, darkness per cell
+    const oc = document.createElement('canvas'); oc.width = cw; oc.height = ch;
+    const o = oc.getContext('2d');
+    const w = im.naturalWidth, hh = im.naturalHeight;
+    const s = Math.max(cw * CW / w, ch * CH / hh) * z; // pixel scale that covers the column (z < 1 shows more)
+    const dw = w * s / CW, dh = hh * s / CH;          // size in cells (cells are taller than wide)
+    const ox = dw > cw ? Math.min(0, Math.max(cw - dw, cw / 2 - dw * fx)) : (cw - dw) / 2;   // keep the subject centred
+    const oy = dh > ch ? Math.min(0, Math.max(ch - dh, ch / 2 - dh * fy)) : (ch - dh) / 2;
+    o.fillStyle = '#fff'; o.fillRect(0, 0, cw, ch);
+    o.drawImage(im, ox, oy, dw, dh);
+    let d;
+    try { d = o.getImageData(0, 0, cw, ch).data; } catch (err) { return null; }   // e.g. opened from file://
+    const out = new Float32Array(cw * ch);
+    for (let i = 0; i < cw * ch; i++) out[i] = 1 - (d[i * 4] * .299 + d[i * 4 + 1] * .587 + d[i * 4 + 2] * .114) / 255;
+    // per-column contrast stretch: dark photo backgrounds would otherwise turn into solid blocks;
+    // like the reference, keep the mid-tones open and let only the subject's shadows build up
+    const sorted = Float32Array.from(out).sort();
+    const lo = sorted[Math.floor(sorted.length * .35)], hi = sorted[Math.floor(sorted.length * .995)];
+    for (let i = 0; i < out.length; i++) out[i] = Math.pow(Math.min(1, Math.max(0, (out[i] - lo) / Math.max(.05, hi - lo))), 1.35);
+    return out;
+  }
+  function layout() {
+    cells = [];
+    const m = 2, gap = 3, top = 3, bottom = ROWS - 2;
+    const colW = Math.floor((COLS - m * 2 - gap * 4) / 5), ch = bottom - top;
+    // header line, set in the same characters so it breaks with everything else
+    const head = [['JIEUN.SEO', m], ['WORKS', Math.round(COLS * .38)], ['PROFILE', Math.round(COLS * .5)], ['UX DESIGNER', COLS - m - 11]];
+    head.forEach(([txt, x0], hi) => [...txt].forEach((c, k) => cells.push({ x: x0 + k, y: 1, t: c, col: hi % 5, a: 1, i: cells.length })));
+    for (let c = 0; c < 5; c++) {
+      const x0 = m + c * (colW + gap);
+      const im = imgs[c];
+      const dk = im && im.complete && im.naturalWidth ? sample(im, SRC[c].fx, colW, ch, SRC[c].z, SRC[c].fy) : null;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < colW; x++) {
+        const i = c * 100003 + y * colW + x;            // stable per-cell seed
+        let ch2 = ' ', a = 1;
+        if (dk) {
+          const v = dk[y * colW + x];
+          if (v < .08) continue;
+          ch2 = RAMP[Math.min(RAMP.length - 1, Math.round(v * (RAMP.length - 1)))];
+        } else {                                       // projects not made yet: a sparse, faint field
+          if (R(i, c) > .1) continue;
+          ch2 = NOISE[Math.floor(R(i, 9) * NOISE.length)]; a = .4;
+        }
+        cells.push({ x: x0 + x, y: top + y, t: ch2, col: c, a, i });
+      }
+    }
+    cells.forEach(cl => {
+      const S = 450 + cl.col * 520;                    // each column builds after the previous one
+      cl.scr = S - 150 + R(cl.i, 1) * 350;             // starts scrambling
+      cl.rev = S + R(cl.i, 2) * 900 + (cl.y / ROWS) * 350;   // settles on its character
+      cl.brk = 4500 + cl.col * 140 + R(cl.i, 3) * 700 + (1 - cl.y / ROWS) * 250;   // breaks away
+      cl.vx = (R(cl.i, 4) - .5) * .5; cl.vy = -R(cl.i, 5) * .35; cl.spin = R(cl.i, 6);
+    });
+  }
+  function resize() {
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    CW = Math.max(6, Math.round(W / 200)); CH = Math.round(CW * 1.6);
+    COLS = Math.floor(W / CW); ROWS = Math.floor(H / CH);
+    layout();
+  }
+  function spiral(now, fadeOut) {
+    const cx = W / 2, cy = H / 2, n = 260, rot = now / 1600;
+    ctx.fillStyle = `rgba(17,17,17,${1 - fadeOut})`;
+    for (let k = 0; k < n; k++) {
+      const a = k * .23 + rot, r = (6 + k * 1.15) * (1 + fadeOut * 2.5);
+      const ch = RAMP[RAMP.length - 1 - Math.floor((k / n) * (RAMP.length - 8))];
+      ctx.fillText(ch, cx + Math.cos(a) * r * CW * .55 - CW / 2, cy + Math.sin(a) * r * CW * .55 - CH / 2);
+    }
+    if (!fadeOut) {
+      ctx.fillStyle = `rgba(17,17,17,${.35 + .35 * Math.sin(now / 420)})`;
+      const hint = 'CLICK TO ENTER';
+      ctx.fillText(hint, cx - hint.length * CW / 2, cy + Math.min(W, H) * .32);
+    }
+  }
+  function frame(now) {
+    if (done) return;
+    ctx.clearRect(0, 0, W, H);
+    ctx.font = `${Math.round(CH * .92)}px ${FONT}`; ctx.textBaseline = 'top';
+    if (!started) { spiral(now, 0); requestAnimationFrame(frame); return; }
+    const t = now - t0;
+    if (t < 700) spiral(now, t / 700);
+    for (const cl of cells) {
+      if (t < cl.scr) continue;
+      let ch = cl.t, x = cl.x * CW, y = cl.y * CH, alpha = cl.a;
+      if (t < cl.rev) { ch = NOISE[Math.floor((t / 60 + cl.i) % NOISE.length)]; alpha *= .45; }
+      if (t > cl.brk) {                                 // break apart: fly off, fall, flicker, fade
+        const u = t - cl.brk;
+        x += cl.vx * u; y += cl.vy * u + .0011 * u * u;
+        alpha *= Math.max(0, 1 - u / 1100);
+        if (alpha <= 0) continue;
+        if ((u / 50 + cl.spin * 10) % 3 < 1) ch = NOISE[Math.floor((u / 40 + cl.i) % NOISE.length)];
+      }
+      ctx.fillStyle = `rgba(17,17,17,${alpha})`;
+      ctx.fillText(ch, x, y);
+    }
+    if (t > 6200 && !intro.classList.contains('gone')) intro.classList.add('gone');
+    if (t > 7000) { finish(); return; }
+    requestAnimationFrame(frame);
+  }
+  function start() {
+    if (started) return;
+    started = true; intro.classList.add('started');
+    layout();                                          // images are loaded by now (or fall back to the faint field)
+    t0 = performance.now();
+  }
+  function finish() {
+    done = true; intro.classList.add('gone'); root.style.overflow = '';
+    setTimeout(() => intro.remove(), 900);
+  }
+  intro.addEventListener('click', start);
+  addEventListener('keydown', e => {
+    if (done) return;
+    if (e.key === 'Escape') finish(); else if (e.key === 'Enter' || e.key === ' ') start();
+  });
+  addEventListener('resize', () => { if (!done) resize(); });
+  if (reduceM) { intro.addEventListener('click', finish); }
+  Promise.all(imgs.filter(Boolean).map(im => im.decode ? im.decode().catch(() => {}) : null)).then(() => { if (!started) layout(); });
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
 <script>
 (() => {
   const track = document.getElementById('track');
