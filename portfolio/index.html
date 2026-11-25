@@ -217,6 +217,15 @@
   }
 
   /* ---------- Gallery: images floating on a sphere ---------- */
+  .globe-btn { align-self: center; margin-top: clamp(14px, 3.4vh, 36px); width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; transition: transform .35s cubic-bezier(.65,0,.25,1); }
+  .globe-btn:hover { transform: scale(1.08); }
+  .globe-btn[aria-pressed="true"] { transform: rotate(90deg); }
+  .globe-btn:focus-visible { outline: 2px solid #111; outline-offset: 4px; }
+  .archive .iso, .archive .arc-meta, .archive .arc-list { transition: opacity .6s ease; }
+  #archive-card.sphere-on .iso, #archive-card.sphere-on .arc-meta, #archive-card.sphere-on .arc-list { opacity: 0; pointer-events: none; }
+  #archive-card .sph { z-index: 4; opacity: 0; visibility: hidden; transition: opacity .6s ease, visibility .6s; }
+  #archive-card.sphere-on .sph { opacity: 1; visibility: visible; }
   .sph { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: pan-y;
     background: #ffffff; }
   .sph.drag { cursor: grabbing; }
@@ -292,12 +301,6 @@
         </div>
       </section>
 
-      <section class="panel sphere" data-name="Gallery">
-        <div class="label">Gallery</div>
-        <div class="card w1870" id="sphere-card">
-          <div class="sph" id="sph"><canvas class="sph-bg" id="sph-bg" aria-hidden="true"></canvas></div>
-        </div>
-      </section>
 
       <section class="panel works" data-name="Works">
         <div class="label" id="works-label">Device</div>
@@ -322,6 +325,7 @@
         <div class="label">Archive</div>
         <div class="card w1870" id="archive-card">
           <div class="iso"><div class="iso-world" id="iso-floor"></div><div class="iso-world" id="iso-world"></div></div>
+          <div class="sph" id="sph"><canvas class="sph-bg" id="sph-bg" aria-hidden="true"></canvas></div>
           <div class="arc-meta"><span id="arc-count">001</span></div>
           <ul class="arc-list" id="arc-list">
             <li class="all on" data-project="">All</li>
@@ -332,6 +336,13 @@
             <li data-project="Not yet">Not yet<sup>05</sup></li>
           </ul>
         </div>
+        <button class="globe-btn" id="globe-btn" aria-label="둥근 형태로 보기" aria-pressed="false">
+          <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+            <circle cx="20" cy="20" r="19" fill="#111"/>
+            <ellipse cx="20" cy="20" rx="7.5" ry="19" fill="none" stroke="#fff" stroke-width="2.2"/>
+            <line x1="1" y1="20" x2="39" y2="20" stroke="#fff" stroke-width="2.2"/>
+          </svg>
+        </button>
       </section>
 
 
@@ -797,7 +808,16 @@
 
 
   // ---------- Gallery: portfolio images on a rotating sphere (drag to roll it), scroll to make them vanish
-  const sphCard = document.getElementById('sphere-card');
+  const sphCard = document.getElementById('archive-card');
+  // globe button: the vertical stack turns into the floating sphere (and back)
+  const globeBtn = document.getElementById('globe-btn');
+  let sphereOn = false, sphIn = 0;
+  globeBtn.addEventListener('click', () => {
+    sphereOn = !sphereOn;
+    sphCard.classList.toggle('sphere-on', sphereOn);
+    globeBtn.setAttribute('aria-pressed', String(sphereOn));
+    globeBtn.setAttribute('aria-label', sphereOn ? '세로 나열로 보기' : '둥근 형태로 보기');
+  });
   const sphEl = document.getElementById('sph');
   const SPH_SRC = [
     'img/covers/resona.webp', 'img/covers/lundi.webp', 'img/covers/gripon.webp', 'img/covers/zzazan.webp',
@@ -921,7 +941,9 @@
     const v = smooth(clamp01(t / 0.3));                    // 0..1: photos tint into flat silhouettes
     const ex = smooth(clamp01((t - 0.15) / 0.85));         // the sphere swells toward the camera
     const fade = smooth(clamp01((t - 0.55) / 0.45));       // silhouettes thin out and disappear
-    const rad = H * 0.36 * (1 + 1.7 * ex), cam = H * 0.36 * 3.2, base = W * 0.07 * (1 + 1.1 * ex);
+    sphIn = reduce ? +sphereOn : sphIn + ((sphereOn ? 1 : 0) - sphIn) * 0.06;   // gathers into a sphere when switched on
+    const gIn = smooth(Math.min(1, sphIn));
+    const rad = H * 0.36 * (0.25 + 0.75 * gIn) * (1 + 1.7 * ex), cam = H * 0.36 * 3.2, base = W * 0.07 * (0.4 + 0.6 * gIn) * (1 + 1.1 * ex);
     sphItems.forEach(it => {
       const [x0, y0, z0] = it.p;
       const x = R[0] * x0 + R[1] * y0 + R[2] * z0, y = R[3] * x0 + R[4] * y0 + R[5] * z0, z = R[6] * x0 + R[7] * y0 + R[8] * z0;
@@ -949,7 +971,7 @@
     maxX = Math.max(0, track.scrollWidth - innerWidth);
     ZOOM_LEN = Math.round(innerHeight * 1.2);
     PIN_LEN = ZOOM_LEN + (N - 1) * STEP;
-    SPH_LEN = Math.round(innerHeight * 1.9);             // more scroll needed to clear the gallery
+    SPH_LEN = 0;                                         // the sphere now lives inside the Archive card
     scroller.style.height = (maxX + PIN_LEN + SPH_LEN + innerHeight) + 'px';
     const pad = parseFloat(getComputedStyle(track).paddingLeft);
     offsets = panels.map(p => Math.min(maxX, Math.max(0, p.offsetLeft - pad - (innerWidth - 2 * pad - p.offsetWidth) / 2)));
@@ -969,7 +991,7 @@
   function tick() {
     target = Math.min(maxX, toTrack(scrollY));
     renderArchive(scrollY);
-    renderSphere(clamp01((scrollY - pinStart(SPH)) / SPH_LEN));
+    if (sphereOn || sphIn > 0.01) renderSphere(0);
     current = reduce ? target : current + (target - current) * 0.12;
     if (Math.abs(target - current) < 0.1) current = target;
     track.style.transform = `translate3d(${-current}px,0,0)`;
